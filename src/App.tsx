@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import { GITHUB_API } from './config'
 import './App.css'
-
-const GITHUB_API = 'https://api.github.com'
 
 type GitHubUser = {
   login: string

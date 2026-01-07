@@ -24,6 +24,7 @@ gh auth token
 ```
 
 3. Paste the token into the app and click "Load access".
+   - Tokens are stored locally until you clear them.
 
 ## Linting
 

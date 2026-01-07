@@ -1,34 +1,46 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import { readCache, writeCache } from './cache'
 import { GITHUB_API } from './config'
+import type { GitHubOrg, GitHubRepo, GitHubUser, RateLimitInfo } from './types'
 import './App.css'
 
-type GitHubUser = {
-  login: string
-  name: string | null
-}
-
-type GitHubOrg = {
-  id: number
-  login: string
-  description: string | null
-  html_url: string
-}
-
-type GitHubRepo = {
-  id: number
-  full_name: string
-  html_url: string
-  private: boolean
-  language: string | null
-  updated_at: string
-}
+const TOKEN_KEY = 'github-access-token-v1'
 
 const buildHeaders = (token: string) => ({
   Accept: 'application/vnd.github+json',
   Authorization: `Bearer ${token}`,
   'X-GitHub-Api-Version': '2022-11-28',
 })
+
+const readRateLimit = (headers: Headers): RateLimitInfo | null => {
+  const limit = Number(headers.get('x-ratelimit-limit'))
+  const remaining = Number(headers.get('x-ratelimit-remaining'))
+  const reset = Number(headers.get('x-ratelimit-reset'))
+  const usedHeader = headers.get('x-ratelimit-used')
+  const usedValue = usedHeader ? Number(usedHeader) : null
+
+  if (!Number.isFinite(limit) || !Number.isFinite(remaining) || !Number.isFinite(reset)) {
+    return null
+  }
+
+  return {
+    limit,
+    remaining,
+    reset,
+    used: Number.isFinite(usedValue) ? usedValue : null,
+  }
+}
+
+const pickMoreConservativeRate = (
+  current: RateLimitInfo | null,
+  next: RateLimitInfo,
+) => {
+  if (!current) return next
+  if (next.remaining < current.remaining) return next
+  if (next.remaining === current.remaining && next.reset > current.reset) return next
+  return current
+}
 
 const readJson = async (response: Response): Promise<unknown | null> => {
   const text = await response.text()
@@ -63,8 +75,16 @@ const getErrorMessage = (data: unknown, fallback: string): string => {
   return fallback
 }
 
-const fetchJson = async <T,>(url: string, token: string): Promise<T> => {
+const fetchJson = async <T,>(
+  url: string,
+  token: string,
+  onRateLimit?: (info: RateLimitInfo) => void,
+): Promise<T> => {
   const response = await fetch(url, { headers: buildHeaders(token) })
+  const rateLimit = readRateLimit(response.headers)
+  if (rateLimit && onRateLimit) {
+    onRateLimit(rateLimit)
+  }
   const data = await readJson(response)
   if (!response.ok) {
     const message = getErrorMessage(data, `GitHub error ${response.status}`)
@@ -73,11 +93,19 @@ const fetchJson = async <T,>(url: string, token: string): Promise<T> => {
   return data as T
 }
 
-const fetchAllPages = async <T,>(url: string, token: string): Promise<T[]> => {
+const fetchAllPages = async <T,>(
+  url: string,
+  token: string,
+  onRateLimit?: (info: RateLimitInfo) => void,
+): Promise<T[]> => {
   const items: T[] = []
   let nextUrl = url
   while (nextUrl) {
     const response = await fetch(nextUrl, { headers: buildHeaders(token) })
+    const rateLimit = readRateLimit(response.headers)
+    if (rateLimit && onRateLimit) {
+      onRateLimit(rateLimit)
+    }
     const data = await readJson(response)
     if (!response.ok) {
       const message = getErrorMessage(data, `GitHub error ${response.status}`)
@@ -101,14 +129,74 @@ const formatDate = (isoString?: string | null) => {
   })
 }
 
+const formatDateTime = (isoString: string) => {
+  const date = new Date(isoString)
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+const formatResetTime = (reset: number) => {
+  return new Date(reset * 1000).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 function App() {
   const [token, setToken] = useState('')
   const [showToken, setShowToken] = useState(false)
   const [orgs, setOrgs] = useState<GitHubOrg[]>([])
   const [repos, setRepos] = useState<GitHubRepo[]>([])
   const [profile, setProfile] = useState<GitHubUser | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null)
+  const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null)
+  const [isCached, setIsCached] = useState(false)
+  const [isRateLimitOpen, setIsRateLimitOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const storedToken = localStorage.getItem(TOKEN_KEY)
+    if (storedToken) {
+      setToken(storedToken)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (token.trim()) {
+      localStorage.setItem(TOKEN_KEY, token)
+    } else {
+      localStorage.removeItem(TOKEN_KEY)
+    }
+  }, [token])
+
+  useEffect(() => {
+    let isActive = true
+    readCache()
+      .then((cached) => {
+        if (!isActive) return
+        if (!cached) return
+        setProfile(cached.profile)
+        setOrgs(cached.orgs)
+        setRepos(cached.repos)
+        setLastUpdated(cached.lastUpdated || null)
+        setRateLimit(cached.rateLimit)
+        setIsCached(true)
+      })
+      .catch(() => {})
+    return () => {
+      isActive = false
+    }
+  }, [])
 
   const sortedOrgs = useMemo(
     () => [...orgs].sort((a, b) => a.login.localeCompare(b.login)),
@@ -120,33 +208,45 @@ function App() {
     [repos],
   )
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const cleanedToken = token.trim()
-    if (!cleanedToken) {
-      setError('Add a GitHub personal access token to continue.')
-      return
-    }
+  const fetchAccess = async (cleanedToken: string) => {
     setLoading(true)
     setError('')
-    setProfile(null)
-    setOrgs([])
-    setRepos([])
+    let latestRateLimit: RateLimitInfo | null = null
+    const captureRateLimit = (info: RateLimitInfo) => {
+      latestRateLimit = pickMoreConservativeRate(latestRateLimit, info)
+    }
     try {
       const [userData, orgData, repoData] = await Promise.all([
-        fetchJson<GitHubUser>(`${GITHUB_API}/user`, cleanedToken),
+        fetchJson<GitHubUser>(`${GITHUB_API}/user`, cleanedToken, captureRateLimit),
         fetchAllPages<GitHubOrg>(
           `${GITHUB_API}/user/orgs?per_page=100`,
           cleanedToken,
+          captureRateLimit,
         ),
         fetchAllPages<GitHubRepo>(
           `${GITHUB_API}/user/repos?per_page=100&affiliation=owner,collaborator,organization_member`,
           cleanedToken,
+          captureRateLimit,
         ),
       ])
+      const updatedAt = new Date().toISOString()
       setProfile(userData)
       setOrgs(orgData)
       setRepos(repoData)
+      setRateLimit(latestRateLimit)
+      setLastUpdated(updatedAt)
+      setIsCached(false)
+      try {
+        await writeCache({
+          profile: userData,
+          orgs: orgData,
+          repos: repoData,
+          lastUpdated: updatedAt,
+          rateLimit: latestRateLimit,
+        })
+      } catch {
+        // Cache write errors shouldn't block the UI.
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong.'
       setError(message)
@@ -154,6 +254,36 @@ function App() {
       setLoading(false)
     }
   }
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const cleanedToken = token.trim()
+    if (!cleanedToken) {
+      setError('Add a GitHub personal access token to continue.')
+      return
+    }
+    await fetchAccess(cleanedToken)
+  }
+
+  const handleRefresh = async () => {
+    const cleanedToken = token.trim()
+    if (!cleanedToken) {
+      setError('Add a GitHub personal access token to continue.')
+      return
+    }
+    await fetchAccess(cleanedToken)
+  }
+
+  const handleClearToken = () => {
+    setToken('')
+    setShowToken(false)
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(TOKEN_KEY)
+    }
+  }
+
+  const lastUpdatedLabel = lastUpdated ? formatDateTime(lastUpdated) : null
+  const canRefresh = Boolean(token.trim()) && !loading
 
   return (
     <div className="app">
@@ -171,7 +301,7 @@ function App() {
           <ul>
             <li>Classic token: use the <strong>read:org</strong> scope.</li>
             <li>Fine-grained token: allow org membership + repo read.</li>
-            <li>Tokens stay in memory only and never leave your browser.</li>
+            <li>Tokens stay in your browser and can be cleared anytime.</li>
           </ul>
         </div>
       </header>
@@ -195,15 +325,30 @@ function App() {
           >
             {showToken ? 'Hide' : 'Show'}
           </button>
+          <button
+            type="button"
+            className="button ghost"
+            onClick={handleClearToken}
+            disabled={!token}
+          >
+            Clear
+          </button>
           <button className="button primary" type="submit" disabled={loading}>
             {loading ? 'Loading...' : 'Load access'}
           </button>
         </div>
         <p className="hint">
-          We read from <code>api.github.com</code> using your token and never store
-          it.
+          We read from <code>api.github.com</code>. Tokens are stored locally until
+          you clear them.
         </p>
       </form>
+
+      {isCached && lastUpdatedLabel ? (
+        <div className="alert info">
+          Showing cached data from {lastUpdatedLabel}. Click refresh to fetch the
+          latest.
+        </div>
+      ) : null}
 
       {error ? (
         <div className="alert error">{error}</div>
@@ -211,7 +356,7 @@ function App() {
 
       {profile ? (
         <section className="summary">
-          <div>
+          <div className="summary-main">
             <p className="summary-title">Signed in as</p>
             <h2>{profile.login}</h2>
             <p className="summary-subtitle">{profile.name || 'GitHub user'}</p>
@@ -225,6 +370,19 @@ function App() {
               <p className="metric-label">Repositories</p>
               <p className="metric-value">{repos.length}</p>
             </div>
+          </div>
+          <div className="summary-actions">
+            <button
+              className="button ghost"
+              type="button"
+              onClick={handleRefresh}
+              disabled={!canRefresh}
+            >
+              {loading ? 'Refreshing...' : 'Refresh data'}
+            </button>
+            {lastUpdatedLabel ? (
+              <p className="summary-updated">Last updated {lastUpdatedLabel}</p>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -280,6 +438,46 @@ function App() {
           )}
         </section>
       </div>
+
+      <footer className="footer">
+        <button
+          type="button"
+          className="footer-toggle"
+          onClick={() => setIsRateLimitOpen((value) => !value)}
+          aria-expanded={isRateLimitOpen}
+        >
+          Rate limit info
+          <span className={`chevron ${isRateLimitOpen ? 'open' : ''}`} aria-hidden>
+            ▼
+          </span>
+        </button>
+        {isRateLimitOpen ? (
+          <div className="footer-panel">
+            {rateLimit ? (
+              <div className="rate-grid">
+                <div>
+                  <p className="rate-label">Remaining</p>
+                  <p className="rate-value">
+                    {rateLimit.remaining} / {rateLimit.limit}
+                  </p>
+                </div>
+                <div>
+                  <p className="rate-label">Resets</p>
+                  <p className="rate-value">{formatResetTime(rateLimit.reset)}</p>
+                </div>
+                {rateLimit.used !== null ? (
+                  <div>
+                    <p className="rate-label">Used</p>
+                    <p className="rate-value">{rateLimit.used}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="rate-empty">Fetch data to see rate limit status.</p>
+            )}
+          </div>
+        ) : null}
+      </footer>
     </div>
   )
 }

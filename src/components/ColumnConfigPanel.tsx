@@ -34,16 +34,25 @@ const ColumnConfigPanel = ({
       <div className="config-list">
         {REPO_COLUMNS.map(({ key, label }) => {
           const isVisible = visibility[key] ?? true
+          const isLocked = key === 'name'
           return (
             <button
               key={key}
               type="button"
-              className={`config-toggle ${isVisible ? 'on' : 'off'}`}
-              onClick={() => onToggle(key)}
+              className={`config-toggle ${isVisible ? 'on' : 'off'} ${
+                isLocked ? 'locked' : ''
+              }`}
+              onClick={() => {
+                if (isLocked) return
+                onToggle(key)
+              }}
               aria-pressed={isVisible}
+              disabled={isLocked}
             >
               <span>{label}</span>
-              <span className="config-state">{isVisible ? 'On' : 'Off'}</span>
+              <span className="config-state">
+                {isLocked ? 'Required' : isVisible ? 'On' : 'Off'}
+              </span>
             </button>
           )
         })}

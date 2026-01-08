@@ -5,6 +5,8 @@ type TabHeaderProps = {
   hiddenCount: number
   onToggleConfig: () => void
   configEnabled: boolean
+  filterValue: string
+  onFilterChange: (value: string) => void
 }
 
 const TabHeader = ({
@@ -14,6 +16,8 @@ const TabHeader = ({
   hiddenCount,
   onToggleConfig,
   configEnabled,
+  filterValue,
+  onFilterChange,
 }: TabHeaderProps) => (
   <div className="panel-tabs-row">
     <div className="panel-tabs" role="tablist" aria-label="Access views">
@@ -36,6 +40,17 @@ const TabHeader = ({
         Repositories
       </button>
     </div>
+    {configEnabled ? (
+      <div className="repo-filter">
+        <input
+          type="search"
+          value={filterValue}
+          onChange={(event) => onFilterChange(event.target.value)}
+          placeholder="Filter repositories..."
+          aria-label="Filter repositories"
+        />
+      </div>
+    ) : null}
     <button
       type="button"
       className="config-button"

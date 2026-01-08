@@ -15,6 +15,7 @@ import {
   ORG_FILTER_KEY,
   PERSONAL_OTHER_KEY,
   PERSONAL_SELF_KEY,
+  REPO_FILTER_KEY,
   TAB_KEY,
   TOKEN_KEY,
 } from './lib/constants'
@@ -48,6 +49,7 @@ function App() {
     ORG_FILTER_KEY,
     {},
   )
+  const [repoFilter, setRepoFilter] = useLocalStorageState(REPO_FILTER_KEY, '')
   const [columnVisibility, setColumnVisibility] = useLocalStorageState(
     'repo-table-columns-v1',
     DEFAULT_REPO_COLUMN_VISIBILITY,
@@ -126,6 +128,14 @@ function App() {
       return personalVisibility.other
     })
   }, [orgVisibility, orgs, personalVisibility, profile?.login, sortedRepos])
+
+  const visibleRepos = useMemo(() => {
+    const needle = repoFilter.trim().toLowerCase()
+    if (!needle) return scopedRepos
+    return scopedRepos.filter((repo) =>
+      (repo.full_name || '').toLowerCase().includes(needle),
+    )
+  }, [repoFilter, scopedRepos])
 
   const handleToggleOrg = (login: string) => {
     setOrgFilters((prev) => ({
@@ -265,6 +275,8 @@ function App() {
             hiddenCount={hiddenColumnCount}
             onToggleConfig={() => setIsColumnPanelOpen((value) => !value)}
             configEnabled={activeTab === 'repos'}
+            filterValue={repoFilter}
+            onFilterChange={setRepoFilter}
           />
           <ColumnConfigPanel
             isOpen={isColumnPanelOpen}
@@ -283,7 +295,7 @@ function App() {
           />
         ) : (
           <RepoPanel
-            repos={scopedRepos}
+            repos={visibleRepos}
             totalCount={sortedRepos.length}
             columnVisibility={columnVisibility}
             onColumnVisibilityChange={setColumnVisibility}

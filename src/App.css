@@ -238,6 +238,27 @@
   position: relative;
 }
 
+.repo-filter {
+  flex: 1;
+  max-width: 360px;
+}
+
+.repo-filter input {
+  width: 100%;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+}
+
+.repo-filter input:focus {
+  outline: 2px solid transparent;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
+}
+
 .panel-tabs {
   display: inline-flex;
   gap: 12px;
@@ -351,6 +372,11 @@
   font-weight: 600;
   color: var(--ink);
   cursor: pointer;
+}
+
+.config-toggle.locked {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .config-toggle.on {
@@ -703,6 +729,11 @@
   .panel-tabs-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .repo-filter {
+    width: 100%;
+    max-width: none;
   }
 
   .config-panel {

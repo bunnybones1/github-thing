@@ -10,14 +10,9 @@ export type GitHubOrg = {
   html_url: string
 }
 
-export type GitHubRepo = {
-  id: number
-  full_name: string
-  html_url: string
-  private: boolean
-  language: string | null
-  updated_at: string
-}
+import type { components } from '@octokit/openapi-types'
+
+export type GitHubRepo = components['schemas']['repository']
 
 export type RateLimitInfo = {
   limit: number

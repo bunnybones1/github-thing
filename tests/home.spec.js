@@ -174,6 +174,77 @@ test('uses cached data after refresh', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'cached/repo' })).not.toBeVisible()
 })
 
+test('filters archived repos', async ({ page }) => {
+  const user = { login: 'filterbot', name: 'Filter Bot' }
+  const orgs = []
+  const repos = [
+    {
+      id: 20,
+      full_name: 'filter/active',
+      html_url: 'https://gh',
+      private: false,
+      archived: false,
+      language: 'TypeScript',
+      updated_at: '2024-03-01T12:00:00Z',
+    },
+    {
+      id: 21,
+      full_name: 'filter/archived',
+      html_url: 'https://gh',
+      private: false,
+      archived: true,
+      language: 'TypeScript',
+      updated_at: '2024-03-02T12:00:00Z',
+    },
+    {
+      id: 22,
+      full_name: 'filter/private',
+      html_url: 'https://gh',
+      private: true,
+      archived: false,
+      language: 'TypeScript',
+      updated_at: '2024-03-03T12:00:00Z',
+    },
+  ]
+
+  await mockGitHubApi(page, {
+    '/user': (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { ...defaultHeaders, ...rateHeaders },
+        body: JSON.stringify(user),
+      }),
+    '/user/orgs': (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { ...defaultHeaders, ...rateHeaders },
+        body: JSON.stringify(orgs),
+      }),
+    '/user/repos': (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { ...defaultHeaders, ...rateHeaders },
+        body: JSON.stringify(repos),
+      }),
+  })
+
+  await page.goto('/')
+  await page.getByLabel('Personal access token').fill('ghp_filter')
+  await page.getByRole('button', { name: /load access/i }).click()
+  await page.getByRole('tab', { name: /repositories/i }).click()
+
+  await expect(page.getByRole('link', { name: 'filter/active' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'filter/archived' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'filter/private' })).toBeVisible()
+
+  await page.getByRole('button', { name: /filters/i }).click()
+  await page.getByRole('button', { name: /hide archived/i }).click()
+  await page.getByRole('button', { name: /hide private/i }).click()
+
+  await expect(page.getByRole('link', { name: 'filter/archived' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'filter/private' })).toHaveCount(0)
+})
+
 test('surfaces API errors', async ({ page }) => {
   await mockGitHubApi(page, {
     '/user': (route) =>

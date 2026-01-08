@@ -230,6 +230,15 @@
   position: relative;
 }
 
+.panel-popovers {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  display: flex;
+  gap: 12px;
+  z-index: 12;
+}
+
 .panel-tabs-row {
   display: flex;
   align-items: center;
@@ -305,6 +314,10 @@
   opacity: 0.6;
 }
 
+.config-button.ghost {
+  background: transparent;
+}
+
 .config-badge {
   background: rgba(15, 118, 110, 0.12);
   color: var(--accent-strong);
@@ -315,9 +328,7 @@
 }
 
 .config-panel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
+  position: relative;
   z-index: 10;
   width: min(320px, 90vw);
   padding: 16px;
@@ -736,9 +747,14 @@
     max-width: none;
   }
 
+  .panel-popovers {
+    position: static;
+    flex-direction: column;
+    width: 100%;
+  }
+
   .config-panel {
-    right: auto;
-    left: 0;
+    width: 100%;
   }
 
   .summary {

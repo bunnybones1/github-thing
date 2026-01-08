@@ -4,6 +4,8 @@ import { readCache, writeCache } from './cache'
 import Hero from './components/Hero'
 import CacheNotice from './components/CacheNotice'
 import ColumnConfigPanel from './components/ColumnConfigPanel'
+import FilterPanel from './components/FilterPanel'
+import type { RepoFilters } from './components/FilterPanel'
 import OrgPanel from './components/OrgPanel'
 import RateLimitFooter from './components/RateLimitFooter'
 import RepoPanel from './components/RepoPanel'
@@ -16,6 +18,7 @@ import {
   PERSONAL_OTHER_KEY,
   PERSONAL_SELF_KEY,
   REPO_FILTER_KEY,
+  REPO_FILTERS_KEY,
   TAB_KEY,
   TOKEN_KEY,
 } from './lib/constants'
@@ -41,6 +44,7 @@ function App() {
   const [isCached, setIsCached] = useState(false)
   const [isRateLimitOpen, setIsRateLimitOpen] = useState(false)
   const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false)
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
   const [activeTab, setActiveTab] = useLocalStorageState<'orgs' | 'repos'>(
     TAB_KEY,
     'orgs',
@@ -53,6 +57,14 @@ function App() {
   const [columnVisibility, setColumnVisibility] = useLocalStorageState(
     'repo-table-columns-v1',
     DEFAULT_REPO_COLUMN_VISIBILITY,
+  )
+  const [repoFilters, setRepoFilters] = useLocalStorageState<RepoFilters>(
+    REPO_FILTERS_KEY,
+    {
+      hideArchived: false,
+      hidePrivate: false,
+      hidePublic: false,
+    },
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -87,7 +99,10 @@ function App() {
     if (activeTab === 'orgs' && isColumnPanelOpen) {
       setIsColumnPanelOpen(false)
     }
-  }, [activeTab, isColumnPanelOpen])
+    if (activeTab === 'orgs' && isFilterPanelOpen) {
+      setIsFilterPanelOpen(false)
+    }
+  }, [activeTab, isColumnPanelOpen, isFilterPanelOpen])
 
   const sortedOrgs = useMemo(
     () => [...orgs].sort((a, b) => a.login.localeCompare(b.login)),
@@ -137,6 +152,20 @@ function App() {
     )
   }, [repoFilter, scopedRepos])
 
+  const filteredRepos = useMemo(() => {
+    return visibleRepos.filter((repo) => {
+      if (repoFilters.hideArchived && repo.archived) return false
+      if (repoFilters.hidePrivate && repo.private) return false
+      if (repoFilters.hidePublic && !repo.private) return false
+      return true
+    })
+  }, [
+    repoFilters.hideArchived,
+    repoFilters.hidePrivate,
+    repoFilters.hidePublic,
+    visibleRepos,
+  ])
+
   const handleToggleOrg = (login: string) => {
     setOrgFilters((prev) => ({
       ...prev,
@@ -157,6 +186,21 @@ function App() {
 
   const handleResetColumns = () => {
     setColumnVisibility(DEFAULT_REPO_COLUMN_VISIBILITY)
+  }
+
+  const handleFilterToggle = (key: keyof RepoFilters) => {
+    setRepoFilters((prev) => ({
+      ...prev,
+      [key]: !(prev?.[key] ?? false),
+    }))
+  }
+
+  const handleResetFilters = () => {
+    setRepoFilters({
+      hideArchived: false,
+      hidePrivate: false,
+      hidePublic: false,
+    })
   }
 
   const fetchAccess = async (cleanedToken: string) => {
@@ -272,18 +316,35 @@ function App() {
             activeTab={activeTab}
             onTabChange={setActiveTab}
             showConfig={isColumnPanelOpen}
+            showFilters={isFilterPanelOpen}
             hiddenCount={hiddenColumnCount}
+            filterCount={
+              [
+                repoFilters.hideArchived,
+                repoFilters.hidePrivate,
+                repoFilters.hidePublic,
+              ].filter(Boolean).length
+            }
             onToggleConfig={() => setIsColumnPanelOpen((value) => !value)}
+            onToggleFilters={() => setIsFilterPanelOpen((value) => !value)}
             configEnabled={activeTab === 'repos'}
             filterValue={repoFilter}
             onFilterChange={setRepoFilter}
           />
-          <ColumnConfigPanel
-            isOpen={isColumnPanelOpen}
-            visibility={columnVisibility}
-            onToggle={(key) => handleColumnToggle(key)}
-            onReset={handleResetColumns}
-          />
+          <div className="panel-popovers">
+            <FilterPanel
+              isOpen={isFilterPanelOpen}
+              filters={repoFilters}
+              onToggle={handleFilterToggle}
+              onReset={handleResetFilters}
+            />
+            <ColumnConfigPanel
+              isOpen={isColumnPanelOpen}
+              visibility={columnVisibility}
+              onToggle={(key) => handleColumnToggle(key)}
+              onReset={handleResetColumns}
+            />
+          </div>
         </div>
         {activeTab === 'orgs' ? (
           <OrgPanel
@@ -295,7 +356,7 @@ function App() {
           />
         ) : (
           <RepoPanel
-            repos={visibleRepos}
+            repos={filteredRepos}
             totalCount={sortedRepos.length}
             columnVisibility={columnVisibility}
             onColumnVisibilityChange={setColumnVisibility}

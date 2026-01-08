@@ -13,6 +13,8 @@ dist-ssr
 *.local
 .env
 .wrangler
+test-results
+playwright-report
 
 # Editor directories and files
 .vscode/*

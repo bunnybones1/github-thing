@@ -51,6 +51,12 @@ const RepoPanel = ({ repos, totalCount }: RepoPanelProps) => {
         cell: ({ row }) => row.original.language || 'Unknown',
       },
       {
+        id: 'archived',
+        header: 'Archived',
+        accessorFn: (row) => (row.archived ? 'Archived' : 'Active'),
+        cell: ({ row }) => (row.original.archived ? 'Archived' : 'Active'),
+      },
+      {
         id: 'updated',
         header: 'Updated',
         accessorFn: (row) => row.updated_at || '',

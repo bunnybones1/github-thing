@@ -68,7 +68,7 @@ const getErrorMessage = (data: unknown, fallback: string): string => {
   return fallback
 }
 
-export const fetchJson = async <T,>(
+export const fetchJson = async <T>(
   url: string,
   token: string,
   onRateLimit?: (info: RateLimitInfo) => void,
@@ -86,7 +86,7 @@ export const fetchJson = async <T,>(
   return data as T
 }
 
-export const fetchAllPages = async <T,>(
+export const fetchAllPages = async <T>(
   url: string,
   token: string,
   onRateLimit?: (info: RateLimitInfo) => void,

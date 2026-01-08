@@ -47,8 +47,8 @@ const TokenForm = ({
       </button>
     </div>
     <p className="hint">
-      We read from <code>api.github.com</code>. Tokens are stored locally until you
-      clear them.
+      We read from <code>api.github.com</code>. Tokens are stored locally until you clear
+      them.
     </p>
   </form>
 )

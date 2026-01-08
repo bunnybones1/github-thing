@@ -168,9 +168,7 @@ function App() {
 
       <CacheNotice isCached={isCached} lastUpdatedLabel={lastUpdatedLabel} />
 
-      {error ? (
-        <div className="alert error">{error}</div>
-      ) : null}
+      {error ? <div className="alert error">{error}</div> : null}
 
       {profile ? (
         <Summary

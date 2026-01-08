@@ -14,7 +14,12 @@ type FilterPanelProps = {
 const FilterPanel = ({ isOpen, filters, onToggle, onReset }: FilterPanelProps) => {
   if (!isOpen) return null
   return (
-    <div className="config-panel" role="dialog" aria-label="Repository filters">
+    <div
+      className="config-panel"
+      role="dialog"
+      aria-label="Repository filters"
+      id="filter-panel"
+    >
       <div className="config-header">
         <div>
           <p className="config-title">Filters</p>

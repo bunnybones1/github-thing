@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { readCache, writeCache } from './cache'
 import Hero from './components/Hero'
@@ -45,6 +45,7 @@ function App() {
   const [isRateLimitOpen, setIsRateLimitOpen] = useState(false)
   const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false)
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
+  const tabsWrapperRef = useRef<HTMLDivElement | null>(null)
   const [activeTab, setActiveTab] = useLocalStorageState<'orgs' | 'repos'>(
     TAB_KEY,
     'orgs',
@@ -103,6 +104,20 @@ function App() {
       setIsFilterPanelOpen(false)
     }
   }, [activeTab, isColumnPanelOpen, isFilterPanelOpen])
+
+  useEffect(() => {
+    if (!isColumnPanelOpen && !isFilterPanelOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (tabsWrapperRef.current?.contains(target)) return
+      setIsColumnPanelOpen(false)
+      setIsFilterPanelOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+    }
+  }, [isColumnPanelOpen, isFilterPanelOpen])
 
   const sortedOrgs = useMemo(
     () => [...orgs].sort((a, b) => a.login.localeCompare(b.login)),
@@ -311,7 +326,7 @@ function App() {
       ) : null}
 
       <div className="panel-stack">
-        <div className="panel-tabs-wrapper">
+        <div className="panel-tabs-wrapper" ref={tabsWrapperRef}>
           <TabHeader
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -325,8 +340,18 @@ function App() {
                 repoFilters.hidePublic,
               ].filter(Boolean).length
             }
-            onToggleConfig={() => setIsColumnPanelOpen((value) => !value)}
-            onToggleFilters={() => setIsFilterPanelOpen((value) => !value)}
+            onToggleConfig={() =>
+              setIsColumnPanelOpen((value) => {
+                if (!value) setIsFilterPanelOpen(false)
+                return !value
+              })
+            }
+            onToggleFilters={() =>
+              setIsFilterPanelOpen((value) => {
+                if (!value) setIsColumnPanelOpen(false)
+                return !value
+              })
+            }
             configEnabled={activeTab === 'repos'}
             filterValue={repoFilter}
             onFilterChange={setRepoFilter}

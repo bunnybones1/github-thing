@@ -64,6 +64,7 @@ const TabHeader = ({
         onClick={onToggleFilters}
         aria-expanded={showFilters}
         aria-haspopup="dialog"
+        aria-controls="filter-panel"
         disabled={!configEnabled}
       >
         Filters

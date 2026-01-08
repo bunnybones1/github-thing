@@ -86,18 +86,25 @@ const RepoPanel = ({
     getSortedRowModel: getSortedRowModel(),
   })
 
-  const gridTemplateColumns = useMemo(() => {
+  const { gridTemplateColumns, minWidth } = useMemo(() => {
     const columnWidths = {
-      name: 'minmax(220px, 2.2fr)',
-      visibility: 'minmax(110px, 1fr)',
-      language: 'minmax(120px, 1fr)',
-      archived: 'minmax(120px, 1fr)',
-      updated: 'minmax(140px, 1fr)',
+      name: { template: 'minmax(260px, 2.4fr)', min: 260 },
+      visibility: { template: 'minmax(120px, 1fr)', min: 120 },
+      language: { template: 'minmax(130px, 1fr)', min: 130 },
+      archived: { template: 'minmax(120px, 1fr)', min: 120 },
+      updated: { template: 'minmax(150px, 1fr)', min: 150 },
     }
-    return table
-      .getVisibleLeafColumns()
-      .map((column) => columnWidths[column.id] || 'minmax(120px, 1fr)')
+    const visible = table.getVisibleLeafColumns()
+    const template = visible
+      .map((column) => columnWidths[column.id]?.template || 'minmax(120px, 1fr)')
       .join(' ')
+    const gap = 12
+    const padding = 24
+    const min =
+      visible.reduce((sum, column) => sum + (columnWidths[column.id]?.min ?? 120), 0) +
+      Math.max(visible.length - 1, 0) * gap +
+      padding
+    return { gridTemplateColumns: template, minWidth: Math.max(min, 0) }
   }, [table])
 
   const rows = table.getRowModel().rows
@@ -122,7 +129,12 @@ const RepoPanel = ({
       {repos.length ? (
         <div
           className="table-shell"
-          style={{ '--table-columns': gridTemplateColumns } as CSSProperties}
+          style={
+            {
+              '--table-columns': gridTemplateColumns,
+              '--table-min-width': `${minWidth}px`,
+            } as CSSProperties
+          }
         >
           <div className="table-head">
             {table.getHeaderGroups().map((headerGroup) => (

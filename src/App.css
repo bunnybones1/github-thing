@@ -277,6 +277,12 @@
   width: fit-content;
 }
 
+.tab-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .tab-button {
   border: none;
   background: transparent;
@@ -418,12 +424,14 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-x: auto;
 }
 
 .table-head {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: var(--table-min-width, 100%);
 }
 
 .table-row {
@@ -436,6 +444,7 @@
   gap: 12px;
   padding: 10px 12px;
   background: transparent;
+  min-width: var(--table-min-width, 100%);
 }
 
 .table-row.head {
@@ -447,6 +456,10 @@
 .table-cell {
   font-size: 0.9rem;
   color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-cell.header {
@@ -473,10 +486,12 @@
 .table-body {
   position: relative;
   height: min(420px, 55vh);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   border-radius: 16px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: rgba(255, 255, 255, 0.7);
+  min-width: var(--table-min-width, 100%);
 }
 
 .table-virtual {
@@ -503,6 +518,10 @@
 .table-row a {
   font-weight: 600;
   color: var(--ink);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-row a:hover {

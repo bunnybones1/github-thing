@@ -7,9 +7,16 @@ const buildHeaders = (token: string) => ({
 })
 
 const readRateLimit = (headers: Headers): RateLimitInfo | null => {
-  const limit = Number(headers.get('x-ratelimit-limit'))
-  const remaining = Number(headers.get('x-ratelimit-remaining'))
-  const reset = Number(headers.get('x-ratelimit-reset'))
+  const limitHeader = headers.get('x-ratelimit-limit')
+  const remainingHeader = headers.get('x-ratelimit-remaining')
+  const resetHeader = headers.get('x-ratelimit-reset')
+  if (!limitHeader || !remainingHeader || !resetHeader) {
+    return null
+  }
+
+  const limit = Number(limitHeader)
+  const remaining = Number(remainingHeader)
+  const reset = Number(resetHeader)
   const usedHeader = headers.get('x-ratelimit-used')
   const usedValue = usedHeader ? Number(usedHeader) : null
 

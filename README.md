@@ -41,6 +41,12 @@ pnpm check
 ## Playwright
 
 ```bash
+pnpm dev
+```
+
+In another terminal:
+
+```bash
 pnpm exec playwright install
 pnpm test:e2e
 ```

@@ -9,14 +9,18 @@ import RepoPanel from './components/RepoPanel'
 import Summary from './components/Summary'
 import TokenForm from './components/TokenForm'
 import { GITHUB_API } from './config'
+import {
+  ORG_FILTER_KEY,
+  PERSONAL_OTHER_KEY,
+  PERSONAL_SELF_KEY,
+  TAB_KEY,
+  TOKEN_KEY,
+} from './lib/constants'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { formatDateTime } from './lib/format'
 import { fetchAllPages, fetchJson, pickMoreConservativeRate } from './lib/githubApi'
 import type { GitHubOrg, GitHubRepo, GitHubUser, RateLimitInfo } from './types'
 import './App.css'
-
-const TOKEN_KEY = 'github-access-token-v1'
-const TAB_KEY = 'github-access-tab-v1'
 
 function App() {
   const [token, setToken] = useLocalStorageState(TOKEN_KEY, '')
@@ -31,6 +35,10 @@ function App() {
   const [activeTab, setActiveTab] = useLocalStorageState<'orgs' | 'repos'>(
     TAB_KEY,
     'orgs',
+  )
+  const [orgFilters, setOrgFilters] = useLocalStorageState<Record<string, boolean>>(
+    ORG_FILTER_KEY,
+    {},
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -66,10 +74,47 @@ function App() {
     [orgs],
   )
 
+  const orgVisibility = useMemo<Record<string, boolean>>(() => {
+    const next: Record<string, boolean> = {}
+    for (const org of orgs) {
+      next[org.login] = orgFilters[org.login] ?? true
+    }
+    return next
+  }, [orgFilters, orgs])
+
+  const personalVisibility = useMemo(
+    () => ({
+      self: orgFilters[PERSONAL_SELF_KEY] ?? true,
+      other: orgFilters[PERSONAL_OTHER_KEY] ?? true,
+    }),
+    [orgFilters],
+  )
+
   const sortedRepos = useMemo(
     () => [...repos].sort((a, b) => a.full_name.localeCompare(b.full_name)),
     [repos],
   )
+
+  const scopedRepos = useMemo(() => {
+    const orgSet = new Set(orgs.map((org) => org.login))
+    return sortedRepos.filter((repo) => {
+      if (!repo.full_name) return true
+      const owner = repo.full_name.split('/')[0]
+      if (!owner) return true
+      if (orgSet.has(owner)) return orgVisibility[owner] ?? true
+      if (profile?.login && owner === profile.login) {
+        return personalVisibility.self
+      }
+      return personalVisibility.other
+    })
+  }, [orgVisibility, orgs, personalVisibility, profile?.login, sortedRepos])
+
+  const handleToggleOrg = (login: string) => {
+    setOrgFilters((prev) => ({
+      ...prev,
+      [login]: !(prev?.[login] ?? true),
+    }))
+  }
 
   const fetchAccess = async (cleanedToken: string) => {
     setLoading(true)
@@ -200,9 +245,15 @@ function App() {
           </button>
         </div>
         {activeTab === 'orgs' ? (
-          <OrgPanel orgs={sortedOrgs} />
+          <OrgPanel
+            orgs={sortedOrgs}
+            visibility={orgVisibility}
+            personalVisibility={personalVisibility}
+            profileLogin={profile?.login ?? null}
+            onToggle={handleToggleOrg}
+          />
         ) : (
-          <RepoPanel repos={sortedRepos} />
+          <RepoPanel repos={scopedRepos} totalCount={sortedRepos.length} />
         )}
       </div>
 

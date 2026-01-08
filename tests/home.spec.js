@@ -162,10 +162,14 @@ test('uses cached data after refresh', async ({ page }) => {
   await page.getByRole('tab', { name: /repositories/i }).click()
   await expect(page.getByRole('link', { name: 'cached/repo' })).toBeVisible()
 
+  await page.getByRole('tab', { name: /organizations/i }).click()
+  await page.getByRole('button', { name: /toggle cached/i }).click()
+
   await page.reload()
 
   await expect(page.getByText(/Showing cached data from/i)).toBeVisible()
-  await expect(page.getByRole('link', { name: 'cached/repo' })).toBeVisible()
+  await page.getByRole('tab', { name: /repositories/i }).click()
+  await expect(page.getByRole('link', { name: 'cached/repo' })).not.toBeVisible()
 })
 
 test('surfaces API errors', async ({ page }) => {

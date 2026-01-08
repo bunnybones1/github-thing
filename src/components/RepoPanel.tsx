@@ -14,9 +14,10 @@ import type { GitHubRepo } from '../types'
 
 type RepoPanelProps = {
   repos: GitHubRepo[]
+  totalCount?: number
 }
 
-const RepoPanel = ({ repos }: RepoPanelProps) => {
+const RepoPanel = ({ repos, totalCount }: RepoPanelProps) => {
   const [sorting, setSorting] = useLocalStorageState<SortingState>(
     'repo-table-sorting-v1',
     [{ id: 'name', desc: false }],
@@ -81,7 +82,11 @@ const RepoPanel = ({ repos }: RepoPanelProps) => {
     <section className="panel">
       <div className="panel-header">
         <h3>Repositories</h3>
-        <span className="pill">{repos.length} total</span>
+        <span className="pill">
+          {typeof totalCount === 'number' && totalCount !== repos.length
+            ? `${repos.length} shown / ${totalCount} total`
+            : `${repos.length} total`}
+        </span>
       </div>
       {repos.length ? (
         <div className="table-shell">

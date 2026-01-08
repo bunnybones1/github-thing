@@ -110,6 +110,8 @@ test('loads orgs and repos and shows rate limit info', async ({ page }) => {
   await expect(page.getByText('Signed in as')).toBeVisible()
   await expect(page.getByRole('heading', { name: /octocat/i })).toBeVisible()
   await expect(page.getByRole('link', { name: 'openai', exact: true })).toBeVisible()
+
+  await page.getByRole('tab', { name: /repositories/i }).click()
   await expect(page.getByRole('link', { name: 'openai/atlas' })).toBeVisible()
 
   await page.getByRole('button', { name: /rate limit info/i }).click()
@@ -157,6 +159,7 @@ test('uses cached data after refresh', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Personal access token').fill('ghp_cache')
   await page.getByRole('button', { name: /load access/i }).click()
+  await page.getByRole('tab', { name: /repositories/i }).click()
   await expect(page.getByText('cached/repo')).toBeVisible()
 
   await page.reload()

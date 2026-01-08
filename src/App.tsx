@@ -9,15 +9,17 @@ import RepoPanel from './components/RepoPanel'
 import Summary from './components/Summary'
 import TokenForm from './components/TokenForm'
 import { GITHUB_API } from './config'
+import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { formatDateTime } from './lib/format'
 import { fetchAllPages, fetchJson, pickMoreConservativeRate } from './lib/githubApi'
 import type { GitHubOrg, GitHubRepo, GitHubUser, RateLimitInfo } from './types'
 import './App.css'
 
 const TOKEN_KEY = 'github-access-token-v1'
+const TAB_KEY = 'github-access-tab-v1'
 
 function App() {
-  const [token, setToken] = useState('')
+  const [token, setToken] = useLocalStorageState(TOKEN_KEY, '')
   const [showToken, setShowToken] = useState(false)
   const [orgs, setOrgs] = useState<GitHubOrg[]>([])
   const [repos, setRepos] = useState<GitHubRepo[]>([])
@@ -26,22 +28,16 @@ function App() {
   const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null)
   const [isCached, setIsCached] = useState(false)
   const [isRateLimitOpen, setIsRateLimitOpen] = useState(false)
+  const [activeTab, setActiveTab] = useLocalStorageState<'orgs' | 'repos'>(
+    TAB_KEY,
+    'orgs',
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const storedToken = localStorage.getItem(TOKEN_KEY)
-    if (storedToken) {
-      setToken(storedToken)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (token.trim()) {
-      localStorage.setItem(TOKEN_KEY, token)
-    } else {
+    if (token.trim()) return
+    if (typeof window !== 'undefined') {
       localStorage.removeItem(TOKEN_KEY)
     }
   }, [token])
@@ -182,9 +178,32 @@ function App() {
         />
       ) : null}
 
-      <div className="grid">
-        <OrgPanel orgs={sortedOrgs} />
-        <RepoPanel repos={sortedRepos} />
+      <div className="panel-stack">
+        <div className="panel-tabs" role="tablist" aria-label="Access views">
+          <button
+            type="button"
+            className={`tab-button ${activeTab === 'orgs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('orgs')}
+            role="tab"
+            aria-selected={activeTab === 'orgs'}
+          >
+            Organizations
+          </button>
+          <button
+            type="button"
+            className={`tab-button ${activeTab === 'repos' ? 'active' : ''}`}
+            onClick={() => setActiveTab('repos')}
+            role="tab"
+            aria-selected={activeTab === 'repos'}
+          >
+            Repositories
+          </button>
+        </div>
+        {activeTab === 'orgs' ? (
+          <OrgPanel orgs={sortedOrgs} />
+        ) : (
+          <RepoPanel repos={sortedRepos} />
+        )}
       </div>
 
       <RateLimitFooter

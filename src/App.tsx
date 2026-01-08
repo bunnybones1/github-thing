@@ -3,10 +3,12 @@ import type { FormEvent } from 'react'
 import { readCache, writeCache } from './cache'
 import Hero from './components/Hero'
 import CacheNotice from './components/CacheNotice'
+import ColumnConfigPanel from './components/ColumnConfigPanel'
 import OrgPanel from './components/OrgPanel'
 import RateLimitFooter from './components/RateLimitFooter'
 import RepoPanel from './components/RepoPanel'
 import Summary from './components/Summary'
+import TabHeader from './components/TabHeader'
 import TokenForm from './components/TokenForm'
 import { GITHUB_API } from './config'
 import {
@@ -16,6 +18,11 @@ import {
   TAB_KEY,
   TOKEN_KEY,
 } from './lib/constants'
+import {
+  DEFAULT_REPO_COLUMN_VISIBILITY,
+  REPO_COLUMNS,
+  type RepoColumnKey,
+} from './lib/repoColumns'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { formatDateTime } from './lib/format'
 import { fetchAllPages, fetchJson, pickMoreConservativeRate } from './lib/githubApi'
@@ -32,6 +39,7 @@ function App() {
   const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null)
   const [isCached, setIsCached] = useState(false)
   const [isRateLimitOpen, setIsRateLimitOpen] = useState(false)
+  const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false)
   const [activeTab, setActiveTab] = useLocalStorageState<'orgs' | 'repos'>(
     TAB_KEY,
     'orgs',
@@ -39,6 +47,10 @@ function App() {
   const [orgFilters, setOrgFilters] = useLocalStorageState<Record<string, boolean>>(
     ORG_FILTER_KEY,
     {},
+  )
+  const [columnVisibility, setColumnVisibility] = useLocalStorageState(
+    'repo-table-columns-v1',
+    DEFAULT_REPO_COLUMN_VISIBILITY,
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -68,6 +80,12 @@ function App() {
       isActive = false
     }
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'orgs' && isColumnPanelOpen) {
+      setIsColumnPanelOpen(false)
+    }
+  }, [activeTab, isColumnPanelOpen])
 
   const sortedOrgs = useMemo(
     () => [...orgs].sort((a, b) => a.login.localeCompare(b.login)),
@@ -114,6 +132,21 @@ function App() {
       ...prev,
       [login]: !(prev?.[login] ?? true),
     }))
+  }
+
+  const hiddenColumnCount = REPO_COLUMNS.filter(
+    ({ key }) => columnVisibility[key] === false,
+  ).length
+
+  const handleColumnToggle = (key: RepoColumnKey) => {
+    setColumnVisibility((prev) => ({
+      ...prev,
+      [key]: !(prev?.[key] ?? true),
+    }))
+  }
+
+  const handleResetColumns = () => {
+    setColumnVisibility(DEFAULT_REPO_COLUMN_VISIBILITY)
   }
 
   const fetchAccess = async (cleanedToken: string) => {
@@ -224,25 +257,21 @@ function App() {
       ) : null}
 
       <div className="panel-stack">
-        <div className="panel-tabs" role="tablist" aria-label="Access views">
-          <button
-            type="button"
-            className={`tab-button ${activeTab === 'orgs' ? 'active' : ''}`}
-            onClick={() => setActiveTab('orgs')}
-            role="tab"
-            aria-selected={activeTab === 'orgs'}
-          >
-            Organizations
-          </button>
-          <button
-            type="button"
-            className={`tab-button ${activeTab === 'repos' ? 'active' : ''}`}
-            onClick={() => setActiveTab('repos')}
-            role="tab"
-            aria-selected={activeTab === 'repos'}
-          >
-            Repositories
-          </button>
+        <div className="panel-tabs-wrapper">
+          <TabHeader
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            showConfig={isColumnPanelOpen}
+            hiddenCount={hiddenColumnCount}
+            onToggleConfig={() => setIsColumnPanelOpen((value) => !value)}
+            configEnabled={activeTab === 'repos'}
+          />
+          <ColumnConfigPanel
+            isOpen={isColumnPanelOpen}
+            visibility={columnVisibility}
+            onToggle={(key) => handleColumnToggle(key)}
+            onReset={handleResetColumns}
+          />
         </div>
         {activeTab === 'orgs' ? (
           <OrgPanel
@@ -253,7 +282,12 @@ function App() {
             onToggle={handleToggleOrg}
           />
         ) : (
-          <RepoPanel repos={scopedRepos} totalCount={sortedRepos.length} />
+          <RepoPanel
+            repos={scopedRepos}
+            totalCount={sortedRepos.length}
+            columnVisibility={columnVisibility}
+            onColumnVisibilityChange={setColumnVisibility}
+          />
         )}
       </div>
 

@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react'
+import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   flexRender,
@@ -9,15 +10,23 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { formatDate } from '../lib/format'
+import type { RepoColumnVisibility } from '../lib/repoColumns'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import type { GitHubRepo } from '../types'
 
 type RepoPanelProps = {
   repos: GitHubRepo[]
   totalCount?: number
+  columnVisibility: RepoColumnVisibility
+  onColumnVisibilityChange: Dispatch<SetStateAction<RepoColumnVisibility>>
 }
 
-const RepoPanel = ({ repos, totalCount }: RepoPanelProps) => {
+const RepoPanel = ({
+  repos,
+  totalCount,
+  columnVisibility,
+  onColumnVisibilityChange,
+}: RepoPanelProps) => {
   const [sorting, setSorting] = useLocalStorageState<SortingState>(
     'repo-table-sorting-v1',
     [{ id: 'name', desc: false }],
@@ -65,15 +74,31 @@ const RepoPanel = ({ repos, totalCount }: RepoPanelProps) => {
     ],
     [],
   )
+
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: repos,
     columns,
-    state: { sorting },
+    state: { sorting, columnVisibility },
     onSortingChange: setSorting,
+    onColumnVisibilityChange,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
+
+  const gridTemplateColumns = useMemo(() => {
+    const columnWidths = {
+      name: 'minmax(220px, 2.2fr)',
+      visibility: 'minmax(110px, 1fr)',
+      language: 'minmax(120px, 1fr)',
+      archived: 'minmax(120px, 1fr)',
+      updated: 'minmax(140px, 1fr)',
+    }
+    return table
+      .getVisibleLeafColumns()
+      .map((column) => columnWidths[column.id] || 'minmax(120px, 1fr)')
+      .join(' ')
+  }, [table])
 
   const rows = table.getRowModel().rows
   const parentRef = useRef<HTMLDivElement | null>(null)
@@ -95,7 +120,10 @@ const RepoPanel = ({ repos, totalCount }: RepoPanelProps) => {
         </span>
       </div>
       {repos.length ? (
-        <div className="table-shell">
+        <div
+          className="table-shell"
+          style={{ '--table-columns': gridTemplateColumns } as CSSProperties}
+        >
           <div className="table-head">
             {table.getHeaderGroups().map((headerGroup) => (
               <div className="table-row head" key={headerGroup.id} role="row">

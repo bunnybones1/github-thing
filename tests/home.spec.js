@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const API_BASE = 'https://api.github.com'
+const API_BASE = '/api/github'
 
 const defaultHeaders = {
   'access-control-allow-origin': '*',
@@ -16,25 +16,10 @@ const rateHeaders = {
   'x-ratelimit-used': '9',
 }
 
-const handleOptions = (route) =>
-  route.fulfill({
-    status: 204,
-    headers: {
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,OPTIONS',
-      'access-control-allow-headers':
-        'authorization,content-type,accept,x-github-api-version',
-    },
-  })
-
 const mockGitHubApi = async (page, handlers) => {
-  await page.route(`${API_BASE}/**`, async (route) => {
-    if (route.request().method() === 'OPTIONS') {
-      return handleOptions(route)
-    }
-
+  await page.route(`**${API_BASE}/**`, async (route) => {
     const url = new URL(route.request().url())
-    const handler = handlers[url.pathname]
+    const handler = handlers[url.pathname.replace(API_BASE, '')]
     if (handler) {
       return handler(route)
     }
@@ -47,23 +32,32 @@ const mockGitHubApi = async (page, handlers) => {
   })
 }
 
+const mockAuthSession = async (page, authenticated) => {
+  await page.route('**/api/auth/session', async (route) =>
+    route.fulfill({
+      status: authenticated ? 200 : 401,
+      headers: defaultHeaders,
+      body: JSON.stringify({ authenticated }),
+    }),
+  )
+}
+
 test('loads the access map landing page', async ({ page }) => {
+  await mockAuthSession(page, false)
   await page.goto('/')
 
   await expect(
     page.getByRole('heading', { name: /List every org and repo you can reach/i }),
   ).toBeVisible()
-  await expect(page.getByLabel('Personal access token')).toBeVisible()
+  await expect(page.getByRole('button', { name: /sign in with github/i })).toBeVisible()
 })
 
-test('requires a token before loading data', async ({ page }) => {
+test('requires login before loading data', async ({ page }) => {
+  await mockAuthSession(page, false)
   await page.goto('/')
 
-  await page.getByRole('button', { name: /load access/i }).click()
-
-  await expect(
-    page.getByText(/Add a GitHub personal access token to continue/i),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: /sign in with github/i })).toBeVisible()
+  await expect(page.getByRole('button', { name: /load access/i })).toHaveCount(0)
 })
 
 test('loads orgs and repos and shows rate limit info', async ({ page }) => {
@@ -83,6 +77,7 @@ test('loads orgs and repos and shows rate limit info', async ({ page }) => {
     },
   ]
 
+  await mockAuthSession(page, true)
   await mockGitHubApi(page, {
     '/user': (route) =>
       route.fulfill({
@@ -105,7 +100,6 @@ test('loads orgs and repos and shows rate limit info', async ({ page }) => {
   })
 
   await page.goto('/')
-  await page.getByLabel('Personal access token').fill('ghp_fake')
   await page.getByRole('button', { name: /load access/i }).click()
 
   await expect(page.getByText('Signed in as')).toBeVisible()
@@ -137,6 +131,7 @@ test('uses cached data after refresh', async ({ page }) => {
     },
   ]
 
+  await mockAuthSession(page, true)
   await mockGitHubApi(page, {
     '/user': (route) =>
       route.fulfill({
@@ -159,7 +154,6 @@ test('uses cached data after refresh', async ({ page }) => {
   })
 
   await page.goto('/')
-  await page.getByLabel('Personal access token').fill('ghp_cache')
   await page.getByRole('button', { name: /load access/i }).click()
   await page.getByRole('tab', { name: /repositories/i }).click()
   await expect(page.getByRole('link', { name: 'cached/repo' })).toBeVisible()
@@ -207,6 +201,7 @@ test('filters archived repos', async ({ page }) => {
     },
   ]
 
+  await mockAuthSession(page, true)
   await mockGitHubApi(page, {
     '/user': (route) =>
       route.fulfill({
@@ -229,7 +224,6 @@ test('filters archived repos', async ({ page }) => {
   })
 
   await page.goto('/')
-  await page.getByLabel('Personal access token').fill('ghp_filter')
   await page.getByRole('button', { name: /load access/i }).click()
   await page.getByRole('tab', { name: /repositories/i }).click()
 
@@ -246,6 +240,7 @@ test('filters archived repos', async ({ page }) => {
 })
 
 test('surfaces API errors', async ({ page }) => {
+  await mockAuthSession(page, true)
   await mockGitHubApi(page, {
     '/user': (route) =>
       route.fulfill({
@@ -268,8 +263,7 @@ test('surfaces API errors', async ({ page }) => {
   })
 
   await page.goto('/')
-  await page.getByLabel('Personal access token').fill('ghp_bad')
   await page.getByRole('button', { name: /load access/i }).click()
 
-  await expect(page.getByText(/Bad credentials/i)).toBeVisible()
+  await expect(page.getByText(/Sign in with GitHub to continue/i)).toBeVisible()
 })

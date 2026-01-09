@@ -1,5 +1,5 @@
-const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
-const ALT_BASE_URL = 'http://localhost:5173'
+const DEFAULT_BASE_URL = 'http://localhost:5173'
+const ALT_BASE_URL = 'http://127.0.0.1:5173'
 
 const resolveBaseUrl = (config) => {
   if (process.env.PLAYWRIGHT_BASE_URL) return process.env.PLAYWRIGHT_BASE_URL

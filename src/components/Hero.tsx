@@ -4,19 +4,20 @@ const Hero = () => (
       <p className="eyebrow">GitHub Access Map</p>
       <h1>List every org and repo you can reach</h1>
       <p className="lead">
-        Paste a GitHub personal access token to map your organization memberships and
-        repository access in one view.
+        Sign in with GitHub to map your organization memberships and repository access in
+        one view.
       </p>
     </div>
     <div className="hero-card">
-      <h2>Token checklist</h2>
-      <ul>
-        <li>
-          Classic token: use the <strong>read:org</strong> scope.
-        </li>
-        <li>Fine-grained token: allow org membership + repo read.</li>
-        <li>Tokens stay in your browser and can be cleared anytime.</li>
-      </ul>
+      <h2>How access works</h2>
+      <p>
+        Sign in with GitHub OAuth. We store a session in a secure httpOnly cookie and
+        never keep your token in the browser.
+      </p>
+      <p className="hero-note">
+        Scopes requested: <code>read:org</code>, <code>read:user</code>, <code>repo</code>
+        .
+      </p>
     </div>
   </header>
 )

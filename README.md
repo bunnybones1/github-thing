@@ -1,6 +1,6 @@
 # GitHub Access Map
 
-Small GitHub client that lists the organizations and repositories your token can
+Small GitHub client that lists the organizations and repositories your account can
 reach. Built with Vite + React + TypeScript, ESLint, and the ESLint Prettier plugin.
 
 ## Setup
@@ -8,23 +8,34 @@ reach. Built with Vite + React + TypeScript, ESLint, and the ESLint Prettier plu
 ```bash
 pnpm install
 cp .env.example .env
-pnpm dev
 ```
+
+## OAuth setup
+
+1. Create a GitHub OAuth App.
+   - Callback URL (local dev): `http://localhost:5173/api/auth/callback`
+2. Create a Cloudflare KV namespace for sessions and update `wrangler.toml`.
+   - `wrangler kv:namespace create SESSIONS`
+   - `wrangler kv:namespace create SESSIONS --preview`
+3. Configure credentials:
+   - Set `GITHUB_CLIENT_ID` in `wrangler.toml`.
+   - Set `GITHUB_CLIENT_SECRET` with `wrangler secret put GITHUB_CLIENT_SECRET`.
+4. (Optional) Set `OAUTH_REDIRECT_URL` if your deploy URL is fixed.
 
 ## Usage
 
-1. Create a personal access token.
-   - Classic token: `read:org` scope is enough for orgs + repos.
-   - Fine-grained token: allow org membership + repo read.
-2. Or use the GitHub CLI to generate an OAuth token:
+Run the worker and Vite:
 
 ```bash
-gh auth login --scopes read:org,repo
-gh auth token
+pnpm dev:worker
+pnpm dev
 ```
 
-3. Paste the token into the app and click "Load access".
-   - Tokens are stored locally until you clear them.
+Open the app and click "Sign in with GitHub" to authorize. Use "Load access" or
+"Refresh data" whenever you want fresh results.
+The login request asks for `read:org`, `repo`, and `read:user`.
+
+If your worker runs on a different origin, set `WORKER_ORIGIN` before `pnpm dev`.
 
 ## Linting
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
 import { readCache, writeCache } from './cache'
+import AuthPanel from './components/AuthPanel'
 import Hero from './components/Hero'
 import CacheNotice from './components/CacheNotice'
 import ColumnConfigPanel from './components/ColumnConfigPanel'
@@ -11,7 +11,6 @@ import RateLimitFooter from './components/RateLimitFooter'
 import RepoPanel from './components/RepoPanel'
 import Summary from './components/Summary'
 import TabHeader from './components/TabHeader'
-import TokenForm from './components/TokenForm'
 import { GITHUB_API } from './config'
 import {
   ORG_FILTER_KEY,
@@ -20,7 +19,6 @@ import {
   REPO_FILTER_KEY,
   REPO_FILTERS_KEY,
   TAB_KEY,
-  TOKEN_KEY,
 } from './lib/constants'
 import {
   DEFAULT_REPO_COLUMN_VISIBILITY,
@@ -29,13 +27,19 @@ import {
 } from './lib/repoColumns'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
 import { formatDateTime } from './lib/format'
-import { fetchAllPages, fetchJson, pickMoreConservativeRate } from './lib/githubApi'
+import {
+  GitHubApiError,
+  fetchAllPages,
+  fetchJson,
+  pickMoreConservativeRate,
+} from './lib/githubApi'
 import type { GitHubOrg, GitHubRepo, GitHubUser, RateLimitInfo } from './types'
 import './App.css'
 
 function App() {
-  const [token, setToken] = useLocalStorageState(TOKEN_KEY, '')
-  const [showToken, setShowToken] = useState(false)
+  const [authStatus, setAuthStatus] = useState<
+    'checking' | 'authenticated' | 'unauthenticated'
+  >('checking')
   const [orgs, setOrgs] = useState<GitHubOrg[]>([])
   const [repos, setRepos] = useState<GitHubRepo[]>([])
   const [profile, setProfile] = useState<GitHubUser | null>(null)
@@ -71,11 +75,30 @@ function App() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (token.trim()) return
     if (typeof window !== 'undefined') {
-      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem('github-access-token-v1')
     }
-  }, [token])
+  }, [])
+
+  useEffect(() => {
+    let isActive = true
+    const checkSession = async () => {
+      try {
+        const response = await fetch('/api/auth/session', {
+          credentials: 'include',
+        })
+        if (!isActive) return
+        setAuthStatus(response.ok ? 'authenticated' : 'unauthenticated')
+      } catch {
+        if (!isActive) return
+        setAuthStatus('unauthenticated')
+      }
+    }
+    checkSession()
+    return () => {
+      isActive = false
+    }
+  }, [])
 
   useEffect(() => {
     let isActive = true
@@ -218,7 +241,7 @@ function App() {
     })
   }
 
-  const fetchAccess = async (cleanedToken: string) => {
+  const fetchAccess = async () => {
     setLoading(true)
     setError('')
     let latestRateLimit: RateLimitInfo | null = null
@@ -227,15 +250,13 @@ function App() {
     }
     try {
       const [userData, orgData, repoData] = await Promise.all([
-        fetchJson<GitHubUser>(`${GITHUB_API}/user`, cleanedToken, captureRateLimit),
+        fetchJson<GitHubUser>(`${GITHUB_API}/user`, captureRateLimit),
         fetchAllPages<GitHubOrg>(
           `${GITHUB_API}/user/orgs?per_page=100`,
-          cleanedToken,
           captureRateLimit,
         ),
         fetchAllPages<GitHubRepo>(
           `${GITHUB_API}/user/repos?per_page=100&affiliation=owner,collaborator,organization_member`,
-          cleanedToken,
           captureRateLimit,
         ),
       ])
@@ -258,55 +279,69 @@ function App() {
         // Cache write errors shouldn't block the UI.
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Something went wrong.'
-      setError(message)
+      if (err instanceof GitHubApiError && err.status === 401) {
+        setAuthStatus('unauthenticated')
+        setError('Sign in with GitHub to continue.')
+      } else {
+        const message = err instanceof Error ? err.message : 'Something went wrong.'
+        setError(message)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const cleanedToken = token.trim()
-    if (!cleanedToken) {
-      setError('Add a GitHub personal access token to continue.')
+  const handleLoadAccess = async () => {
+    if (authStatus !== 'authenticated') {
+      setError('Sign in with GitHub to continue.')
       return
     }
-    await fetchAccess(cleanedToken)
+    await fetchAccess()
   }
 
   const handleRefresh = async () => {
-    const cleanedToken = token.trim()
-    if (!cleanedToken) {
-      setError('Add a GitHub personal access token to continue.')
+    if (authStatus !== 'authenticated') {
+      setError('Sign in with GitHub to continue.')
       return
     }
-    await fetchAccess(cleanedToken)
+    await fetchAccess()
   }
 
-  const handleClearToken = () => {
-    setToken('')
-    setShowToken(false)
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(TOKEN_KEY)
+  const handleLogin = () => {
+    if (typeof window === 'undefined') return
+    const returnTo = `${window.location.pathname}${window.location.search}`
+    const url = `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`
+    window.location.assign(url)
+  }
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch {
+      // Ignore logout errors.
+    } finally {
+      setAuthStatus('unauthenticated')
+      setError('')
     }
   }
 
   const lastUpdatedLabel = lastUpdated ? formatDateTime(lastUpdated) : null
-  const canRefresh = Boolean(token.trim()) && !loading
+  const canRefresh = authStatus === 'authenticated' && !loading
 
   return (
     <div className="app">
       <Hero />
 
-      <TokenForm
-        token={token}
-        showToken={showToken}
+      <AuthPanel
+        status={authStatus}
         loading={loading}
-        onTokenChange={setToken}
-        onSubmit={handleSubmit}
-        onToggleShow={() => setShowToken((value) => !value)}
-        onClearToken={handleClearToken}
+        canLoad={canRefresh}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+        onLoadAccess={handleLoadAccess}
       />
 
       <CacheNotice isCached={isCached} lastUpdatedLabel={lastUpdatedLabel} />

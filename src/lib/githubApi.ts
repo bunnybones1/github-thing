@@ -1,8 +1,17 @@
+import { GITHUB_API } from '../config'
 import type { RateLimitInfo } from '../types'
 
-const buildHeaders = (token: string) => ({
+export class GitHubApiError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+const buildHeaders = () => ({
   Accept: 'application/vnd.github+json',
-  Authorization: `Bearer ${token}`,
   'X-GitHub-Api-Version': '2022-11-28',
 })
 
@@ -52,6 +61,19 @@ const readJson = async (response: Response): Promise<unknown | null> => {
   }
 }
 
+const rewriteGitHubLink = (nextUrl: string): string => {
+  try {
+    const parsed = new URL(nextUrl)
+    if (parsed.origin !== 'https://api.github.com') {
+      return nextUrl
+    }
+    const base = GITHUB_API.replace(/\/$/, '')
+    return `${base}${parsed.pathname}${parsed.search}`
+  } catch {
+    return nextUrl
+  }
+}
+
 const parseNextLink = (linkHeader: string | null): string | null => {
   if (!linkHeader) return null
   const parts = linkHeader.split(',')
@@ -59,7 +81,7 @@ const parseNextLink = (linkHeader: string | null): string | null => {
     const urlMatch = part.match(/<([^>]+)>/)
     const relMatch = part.match(/rel="([^"]+)"/)
     if (urlMatch && relMatch && relMatch[1] === 'next') {
-      return urlMatch[1]
+      return rewriteGitHubLink(urlMatch[1])
     }
   }
   return null
@@ -77,10 +99,12 @@ const getErrorMessage = (data: unknown, fallback: string): string => {
 
 export const fetchJson = async <T>(
   url: string,
-  token: string,
   onRateLimit?: (info: RateLimitInfo) => void,
 ): Promise<T> => {
-  const response = await fetch(url, { headers: buildHeaders(token) })
+  const response = await fetch(url, {
+    headers: buildHeaders(),
+    credentials: 'include',
+  })
   const rateLimit = readRateLimit(response.headers)
   if (rateLimit && onRateLimit) {
     onRateLimit(rateLimit)
@@ -88,20 +112,22 @@ export const fetchJson = async <T>(
   const data = await readJson(response)
   if (!response.ok) {
     const message = getErrorMessage(data, `GitHub error ${response.status}`)
-    throw new Error(message)
+    throw new GitHubApiError(message, response.status)
   }
   return data as T
 }
 
 export const fetchAllPages = async <T>(
   url: string,
-  token: string,
   onRateLimit?: (info: RateLimitInfo) => void,
 ): Promise<T[]> => {
   const items: T[] = []
   let nextUrl = url
   while (nextUrl) {
-    const response = await fetch(nextUrl, { headers: buildHeaders(token) })
+    const response = await fetch(nextUrl, {
+      headers: buildHeaders(),
+      credentials: 'include',
+    })
     const rateLimit = readRateLimit(response.headers)
     if (rateLimit && onRateLimit) {
       onRateLimit(rateLimit)
@@ -109,7 +135,7 @@ export const fetchAllPages = async <T>(
     const data = await readJson(response)
     if (!response.ok) {
       const message = getErrorMessage(data, `GitHub error ${response.status}`)
-      throw new Error(message)
+      throw new GitHubApiError(message, response.status)
     }
     if (Array.isArray(data)) {
       items.push(...data)

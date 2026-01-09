@@ -1,4 +1,3 @@
-export const TOKEN_KEY = 'github-access-token-v1'
 export const TAB_KEY = 'github-access-tab-v1'
 export const ORG_FILTER_KEY = 'github-access-org-filter-v1'
 export const PERSONAL_SELF_KEY = '__personal_self'

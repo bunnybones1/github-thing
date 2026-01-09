@@ -15,8 +15,8 @@ cp .env.example .env
 1. Create a GitHub OAuth App.
    - Callback URL (local dev): `http://localhost:5173/api/auth/callback`
 2. Create a Cloudflare KV namespace for sessions and update `wrangler.toml`.
-   - `wrangler kv:namespace create SESSIONS`
-   - `wrangler kv:namespace create SESSIONS --preview`
+   - `wrangler kv namespace create SESSIONS`
+   - `wrangler kv namespace create SESSIONS --preview`
 3. Configure credentials for local dev:
    - Copy `.dev.vars.example` to `.dev.vars` and fill in the values.
 4. Configure production/preview credentials:

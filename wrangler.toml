@@ -2,10 +2,10 @@ name = "github-thing"
 main = "src/worker.ts"
 compatibility_date = "2024-11-01"
 
+kv_namespaces = [
+  { binding = "SESSIONS", id = "ab60c217faf44e88984b70454ae9bd8a", preview_id = "4225d03cf22e4f8391d7549e15ab2995" }
+]
+
 [assets]
 directory = "./dist"
 binding = "ASSETS"
-
-kv_namespaces = [
-  { binding = "SESSIONS", id = "REPLACE_WITH_KV_ID", preview_id = "REPLACE_WITH_PREVIEW_ID" }
-]

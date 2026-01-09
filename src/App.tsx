@@ -75,12 +75,6 @@ function App() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('github-access-token-v1')
-    }
-  }, [])
-
-  useEffect(() => {
     let isActive = true
     const checkSession = async () => {
       try {

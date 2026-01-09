@@ -17,10 +17,14 @@ cp .env.example .env
 2. Create a Cloudflare KV namespace for sessions and update `wrangler.toml`.
    - `wrangler kv:namespace create SESSIONS`
    - `wrangler kv:namespace create SESSIONS --preview`
-3. Configure credentials:
-   - Set `GITHUB_CLIENT_ID` in `wrangler.toml`.
-   - Set `GITHUB_CLIENT_SECRET` with `wrangler secret put GITHUB_CLIENT_SECRET`.
-4. (Optional) Set `OAUTH_REDIRECT_URL` if your deploy URL is fixed.
+3. Configure credentials for local dev:
+   - Copy `.dev.vars.example` to `.dev.vars` and fill in the values.
+4. Configure production/preview credentials:
+   - Create a `.prod.vars` file (not committed) with:
+     - `GITHUB_CLIENT_ID=...`
+     - `GITHUB_CLIENT_SECRET=...`
+     - `OAUTH_REDIRECT_URL=...`
+   - Use `pnpm deploy:vars` in CI to apply vars + secrets (keys ending in `_SECRET`).
 
 ## Usage
 
@@ -74,3 +78,11 @@ Deploy:
 ```bash
 pnpm deploy
 ```
+
+CI deploy with `.prod.vars`:
+
+```bash
+pnpm deploy:vars
+```
+
+If your Wrangler version expects `--var KEY=VALUE`, pass `--var-delimiter "="`.

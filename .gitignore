@@ -28,3 +28,4 @@ playwright-report
 *.sw?
 
 .dev.vars
+.prod.vars

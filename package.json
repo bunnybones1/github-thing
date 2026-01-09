@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "dev:worker": "pnpm build && wrangler dev",
     "deploy": "pnpm build && wrangler deploy",
+    "deploy:vars": "node scripts/deploy-with-vars.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm test:e2e",
     "preflight": "pnpm lint && pnpm typecheck && pnpm build",
     "test:e2e": "playwright test",

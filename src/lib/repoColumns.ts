@@ -1,4 +1,4 @@
-import type { ColumnVisibilityState } from '@tanstack/react-table'
+import type { VisibilityState } from '@tanstack/react-table'
 
 export const REPO_COLUMNS = [
   { key: 'name', label: 'Repository' },
@@ -9,9 +9,9 @@ export const REPO_COLUMNS = [
 ] as const
 
 export type RepoColumnKey = (typeof REPO_COLUMNS)[number]['key']
-export type RepoColumnVisibility = ColumnVisibilityState
+export type RepoColumnVisibility = VisibilityState
 
-export const DEFAULT_REPO_COLUMN_VISIBILITY: ColumnVisibilityState = {
+export const DEFAULT_REPO_COLUMN_VISIBILITY: VisibilityState = {
   name: true,
   visibility: true,
   language: true,

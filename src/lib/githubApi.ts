@@ -122,7 +122,7 @@ export const fetchAllPages = async <T>(
   onRateLimit?: (info: RateLimitInfo) => void,
 ): Promise<T[]> => {
   const items: T[] = []
-  let nextUrl = url
+  let nextUrl: string | null = url
   while (nextUrl) {
     const response = await fetch(nextUrl, {
       headers: buildHeaders(),

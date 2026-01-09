@@ -10,7 +10,7 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { formatDate } from '../lib/format'
-import type { RepoColumnVisibility } from '../lib/repoColumns'
+import type { RepoColumnKey, RepoColumnVisibility } from '../lib/repoColumns'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import type { GitHubRepo } from '../types'
 
@@ -87,7 +87,7 @@ const RepoPanel = ({
   })
 
   const { gridTemplateColumns, minWidth } = useMemo(() => {
-    const columnWidths = {
+    const columnWidths: Record<RepoColumnKey, { template: string; min: number }> = {
       name: { template: 'minmax(260px, 2.4fr)', min: 260 },
       visibility: { template: 'minmax(120px, 1fr)', min: 120 },
       language: { template: 'minmax(130px, 1fr)', min: 130 },
@@ -96,12 +96,18 @@ const RepoPanel = ({
     }
     const visible = table.getVisibleLeafColumns()
     const template = visible
-      .map((column) => columnWidths[column.id]?.template || 'minmax(120px, 1fr)')
+      .map((column) => {
+        const key = column.id as RepoColumnKey
+        return columnWidths[key]?.template || 'minmax(120px, 1fr)'
+      })
       .join(' ')
     const gap = 12
     const padding = 24
     const min =
-      visible.reduce((sum, column) => sum + (columnWidths[column.id]?.min ?? 120), 0) +
+      visible.reduce((sum, column) => {
+        const key = column.id as RepoColumnKey
+        return sum + (columnWidths[key]?.min ?? 120)
+      }, 0) +
       Math.max(visible.length - 1, 0) * gap +
       padding
     return { gridTemplateColumns: template, minWidth: Math.max(min, 0) }

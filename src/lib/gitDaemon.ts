@@ -1,5 +1,5 @@
-export const DEFAULT_GIT_DAEMON_HTTP = 'http://127.0.0.1:8790'
-export const DEFAULT_GIT_DAEMON_HTTPS = 'https://127.0.0.1:8791'
+const DEFAULT_GIT_DAEMON_HTTP = 'http://127.0.0.1:8790'
+const DEFAULT_GIT_DAEMON_HTTPS = 'https://127.0.0.1:8791'
 
 export const getDefaultGitDaemonBaseUrl = () => {
   if (typeof window === 'undefined') return DEFAULT_GIT_DAEMON_HTTP

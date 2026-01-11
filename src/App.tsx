@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Toaster, toast } from 'sonner'
 import { readCache, writeCache } from './cache'
 import AuthPanel from './components/AuthPanel'
 import GitDaemonPanel from './components/GitDaemonPanel'
@@ -27,6 +28,7 @@ import {
   getDefaultGitDaemonBaseUrl,
   normalizeGitDaemonBaseUrl,
   type GitDaemonMeta,
+  type GitDaemonOpenTarget,
   type GitDaemonPairConfirmResponse,
   type GitDaemonPairStartResponse,
   type RepoCloneStatus,
@@ -102,6 +104,9 @@ function App() {
   const [repoCloneStatuses, setRepoCloneStatuses] = useState<
     Record<string, RepoCloneStatus>
   >({})
+  const [repoOpenErrors, setRepoOpenErrors] = useState<
+    Record<string, Partial<Record<GitDaemonOpenTarget, boolean>>>
+  >({})
   const cloneInFlightRef = useRef<Set<string>>(new Set())
   const clonePollTimeoutsRef = useRef<Record<string, number>>({})
   const clonePollAttemptsRef = useRef<Record<string, number>>({})
@@ -176,15 +181,25 @@ function App() {
     }
   }, [])
 
-  const readDaemonError = useCallback(async (response: Response) => {
+  const readDaemonErrorPayload = useCallback(async (response: Response) => {
     try {
-      const payload = (await response.json()) as { message?: string }
-      if (payload?.message) return payload.message
+      const payload = (await response.json()) as { message?: string; errorCode?: string }
+      if (payload && (payload.message || payload.errorCode)) {
+        return {
+          message: payload.message || `Request failed (${response.status})`,
+          errorCode: payload.errorCode,
+        }
+      }
     } catch {
       // Ignore parsing errors.
     }
-    return `Request failed (${response.status})`
+    return { message: `Request failed (${response.status})` }
   }, [])
+
+  const readDaemonError = useCallback(
+    async (response: Response) => (await readDaemonErrorPayload(response)).message,
+    [readDaemonErrorPayload],
+  )
 
   const handleDaemonUnauthorized = useCallback(() => {
     setDaemonToken(null)
@@ -313,7 +328,7 @@ function App() {
     delete clonePollAttemptsRef.current[repoPath]
   }, [])
 
-  const resetCloneTracking = useCallback(() => {
+  const resetDaemonTracking = useCallback(() => {
     for (const timeout of Object.values(clonePollTimeoutsRef.current)) {
       window.clearTimeout(timeout)
     }
@@ -321,17 +336,18 @@ function App() {
     clonePollAttemptsRef.current = {}
     cloneInFlightRef.current.clear()
     setRepoCloneStatuses({})
-  }, [setRepoCloneStatuses])
+    setRepoOpenErrors({})
+  }, [setRepoCloneStatuses, setRepoOpenErrors])
 
   useEffect(() => {
-    resetCloneTracking()
-  }, [daemonBaseUrl, resetCloneTracking])
+    resetDaemonTracking()
+  }, [daemonBaseUrl, resetDaemonTracking])
 
   useEffect(() => {
     if (!daemonReady) {
-      resetCloneTracking()
+      resetDaemonTracking()
     }
-  }, [daemonReady, resetCloneTracking])
+  }, [daemonReady, resetDaemonTracking])
 
   const checkRepoStatus = useCallback(
     async (repoPath: string, options?: { force?: boolean }) => {
@@ -409,6 +425,39 @@ function App() {
     ],
   )
 
+  const clearOpenError = useCallback(
+    (repoPath: string, target: GitDaemonOpenTarget) => {
+      setRepoOpenErrors((prev) => {
+        const current = prev[repoPath]
+        if (!current?.[target]) return prev
+        const next = { ...current }
+        delete next[target]
+        const updated = { ...prev }
+        if (Object.keys(next).length === 0) {
+          delete updated[repoPath]
+        } else {
+          updated[repoPath] = next
+        }
+        return updated
+      })
+    },
+    [setRepoOpenErrors],
+  )
+
+  const setOpenError = useCallback(
+    (repoPath: string, target: GitDaemonOpenTarget) => {
+      setRepoOpenErrors((prev) => {
+        const current = prev[repoPath]
+        if (current?.[target]) return prev
+        return {
+          ...prev,
+          [repoPath]: { ...(current ?? {}), [target]: true },
+        }
+      })
+    },
+    [setRepoOpenErrors],
+  )
+
   const handleCloneRepo = useCallback(
     async (repo: GitHubRepo) => {
       if (!daemonReady) return
@@ -428,16 +477,20 @@ function App() {
           body: JSON.stringify({ repoUrl, destRelative: repoPath }),
         })
         if (response.status === 401) {
+          const error = await readDaemonErrorPayload(response)
           handleDaemonUnauthorized()
           cloneInFlightRef.current.delete(repoPath)
           clearClonePoll(repoPath)
           setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'error' }))
+          toast.error(error.message)
           return
         }
         if (!response.ok) {
+          const error = await readDaemonErrorPayload(response)
           cloneInFlightRef.current.delete(repoPath)
           clearClonePoll(repoPath)
           setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'error' }))
+          toast.error(error.message)
           return
         }
         window.setTimeout(() => {
@@ -456,6 +509,58 @@ function App() {
       daemonReady,
       daemonToken,
       handleDaemonUnauthorized,
+      readDaemonErrorPayload,
+    ],
+  )
+
+  const handleOpenRepo = useCallback(
+    async (repo: GitHubRepo, target: GitDaemonOpenTarget) => {
+      if (!daemonReady) return
+      const repoPath = repo.full_name || ''
+      if (!repoPath) return
+      clearOpenError(repoPath, target)
+      const label =
+        target === 'vscode' ? 'VS Code' : target === 'terminal' ? 'terminal' : 'folder'
+      const approvalTimer = window.setTimeout(() => {
+        toast.info(`Waiting for approval to open ${label}. Check git-daemon.`)
+      }, 2000)
+      try {
+        const response = await fetch(`${daemonBaseUrlNormalized}/v1/os/open`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(daemonToken ? { Authorization: `Bearer ${daemonToken}` } : {}),
+          },
+          body: JSON.stringify({ target, path: repoPath }),
+        })
+        if (response.status === 401) {
+          const error = await readDaemonErrorPayload(response)
+          handleDaemonUnauthorized()
+          setOpenError(repoPath, target)
+          toast.error(`Open ${label} failed: ${error.message}`)
+          return
+        }
+        if (!response.ok) {
+          const error = await readDaemonErrorPayload(response)
+          setOpenError(repoPath, target)
+          toast.error(`Open ${label} failed: ${error.message}`)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Open request failed.'
+        setOpenError(repoPath, target)
+        toast.error(`Open ${label} failed: ${message}`)
+      } finally {
+        window.clearTimeout(approvalTimer)
+      }
+    },
+    [
+      clearOpenError,
+      daemonBaseUrlNormalized,
+      daemonReady,
+      daemonToken,
+      handleDaemonUnauthorized,
+      readDaemonErrorPayload,
+      setOpenError,
     ],
   )
 
@@ -463,10 +568,19 @@ function App() {
     () => ({
       enabled: daemonReady,
       repoStatuses: repoCloneStatuses,
+      repoOpenErrors,
       onCheckRepoStatus: checkRepoStatus,
       onCloneRepo: handleCloneRepo,
+      onOpenRepo: handleOpenRepo,
     }),
-    [checkRepoStatus, daemonReady, handleCloneRepo, repoCloneStatuses],
+    [
+      checkRepoStatus,
+      daemonReady,
+      handleCloneRepo,
+      handleOpenRepo,
+      repoCloneStatuses,
+      repoOpenErrors,
+    ],
   )
 
   const sortedOrgs = useMemo(
@@ -660,6 +774,7 @@ function App() {
 
   return (
     <div className="app">
+      <Toaster position="top-right" richColors />
       <Hero />
 
       <AuthPanel

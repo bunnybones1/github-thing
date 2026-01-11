@@ -10,7 +10,7 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { formatDate } from '../lib/format'
-import type { RepoCloneStatus } from '../lib/gitDaemon'
+import type { GitDaemonOpenTarget, RepoCloneStatus } from '../lib/gitDaemon'
 import type { RepoColumnKey, RepoColumnVisibility } from '../lib/repoColumns'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import type { GitHubRepo } from '../types'
@@ -18,8 +18,10 @@ import type { GitHubRepo } from '../types'
 type GitDaemonControls = {
   enabled: boolean
   repoStatuses: Record<string, RepoCloneStatus | undefined>
+  repoOpenErrors: Record<string, Partial<Record<GitDaemonOpenTarget, boolean>>>
   onCheckRepoStatus: (repoPath: string) => void
   onCloneRepo: (repo: GitHubRepo) => void
+  onOpenRepo: (repo: GitHubRepo, target: GitDaemonOpenTarget) => void
 }
 
 type RepoPanelProps = {
@@ -47,9 +49,11 @@ const RepoPanel = ({
       const enabled = gitDaemon?.enabled ?? false
       const onCheckRepoStatus = gitDaemon?.onCheckRepoStatus
       const onCloneRepo = gitDaemon?.onCloneRepo
+      const onOpenRepo = gitDaemon?.onOpenRepo
       const status = repoPath
         ? (gitDaemon?.repoStatuses[repoPath] ?? 'unknown')
         : 'unknown'
+      const openErrors = repoPath ? gitDaemon?.repoOpenErrors[repoPath] : undefined
       const canCheck = Boolean(enabled && repoPath)
 
       useEffect(() => {
@@ -76,7 +80,104 @@ const RepoPanel = ({
         )
       }
       if (status === 'exists') {
-        return <span className="pill">Cloned</span>
+        return (
+          <div className="local-actions">
+            <button
+              className={`icon-button${openErrors?.terminal ? ' error' : ''}`}
+              type="button"
+              onClick={() => onOpenRepo?.(repo, 'terminal')}
+              aria-label="Open terminal"
+              title="Open terminal"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+                className="icon"
+              >
+                <rect
+                  x="3"
+                  y="5"
+                  width="18"
+                  height="14"
+                  rx="2"
+                  ry="2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                />
+                <path
+                  d="M8 10l3 3-3 3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M12.5 16H16.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+            <button
+              className={`icon-button${openErrors?.folder ? ' error' : ''}`}
+              type="button"
+              onClick={() => onOpenRepo?.(repo, 'folder')}
+              aria-label="Open folder"
+              title="Open folder"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+                className="icon"
+              >
+                <path
+                  d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <button
+              className={`icon-button${openErrors?.vscode ? ' error' : ''}`}
+              type="button"
+              onClick={() => onOpenRepo?.(repo, 'vscode')}
+              aria-label="Open VS Code"
+              title="Open VS Code"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+                className="icon"
+              >
+                <path
+                  d="M8 7l-4 5 4 5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M16 5l-6 4v6l6 4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        )
       }
       if (status === 'cloning') {
         return <span className="table-muted">Cloning...</span>

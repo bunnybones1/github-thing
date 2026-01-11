@@ -44,3 +44,5 @@ export type RepoCloneStatus =
   | 'exists'
   | 'cloning'
   | 'error'
+
+export type GitDaemonOpenTarget = 'terminal' | 'folder' | 'vscode'

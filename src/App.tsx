@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { readCache, writeCache } from './cache'
 import AuthPanel from './components/AuthPanel'
+import GitDaemonPanel from './components/GitDaemonPanel'
 import Hero from './components/Hero'
 import CacheNotice from './components/CacheNotice'
 import ColumnConfigPanel from './components/ColumnConfigPanel'
@@ -13,6 +14,8 @@ import Summary from './components/Summary'
 import TabHeader from './components/TabHeader'
 import { GITHUB_API } from './config'
 import {
+  GIT_DAEMON_TOKEN_KEY,
+  GIT_DAEMON_URL_KEY,
   ORG_FILTER_KEY,
   PERSONAL_OTHER_KEY,
   PERSONAL_SELF_KEY,
@@ -20,6 +23,14 @@ import {
   REPO_FILTERS_KEY,
   TAB_KEY,
 } from './lib/constants'
+import {
+  getDefaultGitDaemonBaseUrl,
+  normalizeGitDaemonBaseUrl,
+  type GitDaemonMeta,
+  type GitDaemonPairConfirmResponse,
+  type GitDaemonPairStartResponse,
+  type RepoCloneStatus,
+} from './lib/gitDaemon'
 import {
   DEFAULT_REPO_COLUMN_VISIBILITY,
   REPO_COLUMNS,
@@ -73,6 +84,27 @@ function App() {
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [daemonBaseUrl, setDaemonBaseUrl] = useLocalStorageState(
+    GIT_DAEMON_URL_KEY,
+    getDefaultGitDaemonBaseUrl(),
+  )
+  const [daemonToken, setDaemonToken] = useLocalStorageState<string | null>(
+    GIT_DAEMON_TOKEN_KEY,
+    null,
+  )
+  const [daemonStatus, setDaemonStatus] = useState<
+    'idle' | 'checking' | 'ready' | 'error'
+  >('idle')
+  const [daemonMeta, setDaemonMeta] = useState<GitDaemonMeta | null>(null)
+  const [daemonError, setDaemonError] = useState('')
+  const [pairingInfo, setPairingInfo] = useState<GitDaemonPairStartResponse | null>(null)
+  const [pairCode, setPairCode] = useState('')
+  const [repoCloneStatuses, setRepoCloneStatuses] = useState<
+    Record<string, RepoCloneStatus>
+  >({})
+  const cloneInFlightRef = useRef<Set<string>>(new Set())
+  const clonePollTimeoutsRef = useRef<Record<string, number>>({})
+  const clonePollAttemptsRef = useRef<Record<string, number>>({})
 
   useEffect(() => {
     let isActive = true
@@ -135,6 +167,307 @@ function App() {
       document.removeEventListener('pointerdown', handlePointerDown)
     }
   }, [isColumnPanelOpen, isFilterPanelOpen])
+
+  useEffect(() => {
+    return () => {
+      for (const timeout of Object.values(clonePollTimeoutsRef.current)) {
+        window.clearTimeout(timeout)
+      }
+    }
+  }, [])
+
+  const readDaemonError = useCallback(async (response: Response) => {
+    try {
+      const payload = (await response.json()) as { message?: string }
+      if (payload?.message) return payload.message
+    } catch {
+      // Ignore parsing errors.
+    }
+    return `Request failed (${response.status})`
+  }, [])
+
+  const handleDaemonUnauthorized = useCallback(() => {
+    setDaemonToken(null)
+    setDaemonError('Pairing token missing or expired. Reconnect to git-daemon.')
+  }, [setDaemonToken])
+
+  const handleDaemonConnect = useCallback(async () => {
+    const normalized = normalizeGitDaemonBaseUrl(daemonBaseUrl)
+    if (!normalized) {
+      setDaemonError('Enter the git-daemon base URL.')
+      setDaemonStatus('error')
+      return
+    }
+    setDaemonBaseUrl(normalized)
+    setDaemonStatus('checking')
+    setDaemonError('')
+    setPairingInfo(null)
+    try {
+      const response = await fetch(`${normalized}/v1/meta`)
+      if (!response.ok) {
+        setDaemonStatus('error')
+        setDaemonMeta(null)
+        setDaemonError(await readDaemonError(response))
+        return
+      }
+      const data = (await response.json()) as GitDaemonMeta
+      setDaemonMeta(data)
+      setDaemonStatus('ready')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to reach git-daemon.'
+      setDaemonStatus('error')
+      setDaemonMeta(null)
+      setDaemonError(message)
+    }
+  }, [daemonBaseUrl, readDaemonError, setDaemonBaseUrl])
+
+  const handleBaseUrlChange = useCallback(
+    (value: string) => {
+      setDaemonBaseUrl(value)
+      setDaemonStatus('idle')
+      setDaemonMeta(null)
+      setDaemonError('')
+      setPairingInfo(null)
+      setPairCode('')
+    },
+    [setDaemonBaseUrl],
+  )
+
+  const handlePairStart = useCallback(async () => {
+    const normalized = normalizeGitDaemonBaseUrl(daemonBaseUrl)
+    if (!normalized) {
+      setDaemonError('Enter the git-daemon base URL.')
+      return
+    }
+    setDaemonError('')
+    try {
+      const response = await fetch(`${normalized}/v1/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step: 'start' }),
+      })
+      if (!response.ok) {
+        setDaemonError(await readDaemonError(response))
+        return
+      }
+      const data = (await response.json()) as GitDaemonPairStartResponse
+      setPairingInfo(data)
+      setPairCode(data.code ?? '')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Pairing failed.'
+      setDaemonError(message)
+    }
+  }, [daemonBaseUrl, readDaemonError])
+
+  const handlePairConfirm = useCallback(async () => {
+    const normalized = normalizeGitDaemonBaseUrl(daemonBaseUrl)
+    const code = pairCode.trim()
+    if (!normalized) {
+      setDaemonError('Enter the git-daemon base URL.')
+      return
+    }
+    if (!code) {
+      setDaemonError('Enter the pairing code.')
+      return
+    }
+    setDaemonError('')
+    try {
+      const response = await fetch(`${normalized}/v1/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step: 'confirm', code }),
+      })
+      if (!response.ok) {
+        setDaemonError(await readDaemonError(response))
+        return
+      }
+      const data = (await response.json()) as GitDaemonPairConfirmResponse
+      setDaemonToken(data.accessToken)
+      setPairingInfo(null)
+      setPairCode('')
+      await handleDaemonConnect()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Pairing failed.'
+      setDaemonError(message)
+    }
+  }, [daemonBaseUrl, handleDaemonConnect, pairCode, readDaemonError, setDaemonToken])
+
+  const handleForgetToken = useCallback(() => {
+    setDaemonToken(null)
+  }, [setDaemonToken])
+
+  const daemonBaseUrlNormalized = useMemo(
+    () => normalizeGitDaemonBaseUrl(daemonBaseUrl),
+    [daemonBaseUrl],
+  )
+  const daemonReady =
+    daemonStatus === 'ready' &&
+    (daemonMeta?.pairing.required === false || Boolean(daemonToken))
+
+  const clearClonePoll = useCallback((repoPath: string) => {
+    const timeout = clonePollTimeoutsRef.current[repoPath]
+    if (timeout) {
+      window.clearTimeout(timeout)
+      delete clonePollTimeoutsRef.current[repoPath]
+    }
+    delete clonePollAttemptsRef.current[repoPath]
+  }, [])
+
+  const resetCloneTracking = useCallback(() => {
+    for (const timeout of Object.values(clonePollTimeoutsRef.current)) {
+      window.clearTimeout(timeout)
+    }
+    clonePollTimeoutsRef.current = {}
+    clonePollAttemptsRef.current = {}
+    cloneInFlightRef.current.clear()
+    setRepoCloneStatuses({})
+  }, [setRepoCloneStatuses])
+
+  useEffect(() => {
+    resetCloneTracking()
+  }, [daemonBaseUrl, resetCloneTracking])
+
+  useEffect(() => {
+    if (!daemonReady) {
+      resetCloneTracking()
+    }
+  }, [daemonReady, resetCloneTracking])
+
+  const checkRepoStatus = useCallback(
+    async (repoPath: string, options?: { force?: boolean }) => {
+      if (!daemonReady || !repoPath) return
+      setRepoCloneStatuses((prev) => {
+        const current = prev[repoPath]
+        if (!options?.force && current && current !== 'unknown' && current !== 'error') {
+          return prev
+        }
+        if (cloneInFlightRef.current.has(repoPath)) {
+          return { ...prev, [repoPath]: 'cloning' }
+        }
+        return { ...prev, [repoPath]: 'checking' }
+      })
+      try {
+        const response = await fetch(
+          `${daemonBaseUrlNormalized}/v1/git/status?repoPath=${encodeURIComponent(
+            repoPath,
+          )}`,
+          {
+            headers: daemonToken ? { Authorization: `Bearer ${daemonToken}` } : undefined,
+          },
+        )
+        if (response.status === 404) {
+          if (cloneInFlightRef.current.has(repoPath)) {
+            setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'cloning' }))
+            if (!clonePollTimeoutsRef.current[repoPath]) {
+              const attempt = (clonePollAttemptsRef.current[repoPath] ?? 0) + 1
+              clonePollAttemptsRef.current[repoPath] = attempt
+              if (attempt > 60) {
+                cloneInFlightRef.current.delete(repoPath)
+                clearClonePoll(repoPath)
+                setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'error' }))
+                return
+              }
+              const delay = Math.min(1500 + attempt * 250, 6000)
+              clonePollTimeoutsRef.current[repoPath] = window.setTimeout(() => {
+                delete clonePollTimeoutsRef.current[repoPath]
+                checkRepoStatus(repoPath, { force: true })
+              }, delay)
+            }
+          } else {
+            setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'missing' }))
+          }
+          return
+        }
+        if (response.status === 401) {
+          handleDaemonUnauthorized()
+          cloneInFlightRef.current.delete(repoPath)
+          clearClonePoll(repoPath)
+          setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'error' }))
+          return
+        }
+        if (!response.ok) {
+          cloneInFlightRef.current.delete(repoPath)
+          clearClonePoll(repoPath)
+          setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'error' }))
+          return
+        }
+        cloneInFlightRef.current.delete(repoPath)
+        clearClonePoll(repoPath)
+        setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'exists' }))
+      } catch {
+        cloneInFlightRef.current.delete(repoPath)
+        clearClonePoll(repoPath)
+        setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'error' }))
+      }
+    },
+    [
+      clearClonePoll,
+      daemonBaseUrlNormalized,
+      daemonReady,
+      daemonToken,
+      handleDaemonUnauthorized,
+    ],
+  )
+
+  const handleCloneRepo = useCallback(
+    async (repo: GitHubRepo) => {
+      if (!daemonReady) return
+      const repoPath = repo.full_name || ''
+      const repoUrl = repo.ssh_url || repo.clone_url
+      if (!repoPath || !repoUrl) return
+      cloneInFlightRef.current.add(repoPath)
+      clearClonePoll(repoPath)
+      setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'cloning' }))
+      try {
+        const response = await fetch(`${daemonBaseUrlNormalized}/v1/git/clone`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(daemonToken ? { Authorization: `Bearer ${daemonToken}` } : {}),
+          },
+          body: JSON.stringify({ repoUrl, destRelative: repoPath }),
+        })
+        if (response.status === 401) {
+          handleDaemonUnauthorized()
+          cloneInFlightRef.current.delete(repoPath)
+          clearClonePoll(repoPath)
+          setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'error' }))
+          return
+        }
+        if (!response.ok) {
+          cloneInFlightRef.current.delete(repoPath)
+          clearClonePoll(repoPath)
+          setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'error' }))
+          return
+        }
+        window.setTimeout(() => {
+          checkRepoStatus(repoPath, { force: true })
+        }, 1500)
+      } catch {
+        cloneInFlightRef.current.delete(repoPath)
+        clearClonePoll(repoPath)
+        setRepoCloneStatuses((prev) => ({ ...prev, [repoPath]: 'error' }))
+      }
+    },
+    [
+      checkRepoStatus,
+      clearClonePoll,
+      daemonBaseUrlNormalized,
+      daemonReady,
+      daemonToken,
+      handleDaemonUnauthorized,
+    ],
+  )
+
+  const gitDaemonControls = useMemo(
+    () => ({
+      enabled: daemonReady,
+      repoStatuses: repoCloneStatuses,
+      onCheckRepoStatus: checkRepoStatus,
+      onCloneRepo: handleCloneRepo,
+    }),
+    [checkRepoStatus, daemonReady, handleCloneRepo, repoCloneStatuses],
+  )
 
   const sortedOrgs = useMemo(
     () => [...orgs].sort((a, b) => a.login.localeCompare(b.login)),
@@ -338,6 +671,22 @@ function App() {
         onLoadAccess={handleLoadAccess}
       />
 
+      <GitDaemonPanel
+        baseUrl={daemonBaseUrl}
+        status={daemonStatus}
+        error={daemonError}
+        meta={daemonMeta}
+        pairing={pairingInfo}
+        pairCode={pairCode}
+        hasToken={Boolean(daemonToken)}
+        onBaseUrlChange={handleBaseUrlChange}
+        onConnect={handleDaemonConnect}
+        onPairStart={handlePairStart}
+        onPairConfirm={handlePairConfirm}
+        onForgetToken={handleForgetToken}
+        onPairCodeChange={setPairCode}
+      />
+
       <CacheNotice isCached={isCached} lastUpdatedLabel={lastUpdatedLabel} />
 
       {error ? <div className="alert error">{error}</div> : null}
@@ -414,6 +763,7 @@ function App() {
             totalCount={sortedRepos.length}
             columnVisibility={columnVisibility}
             onColumnVisibilityChange={setColumnVisibility}
+            gitDaemon={gitDaemonControls}
           />
         )}
       </div>

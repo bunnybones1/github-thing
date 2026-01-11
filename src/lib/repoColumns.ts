@@ -6,6 +6,7 @@ export const REPO_COLUMNS = [
   { key: 'language', label: 'Language' },
   { key: 'archived', label: 'Archived' },
   { key: 'updated', label: 'Updated' },
+  { key: 'local', label: 'Local' },
 ] as const
 
 export type RepoColumnKey = (typeof REPO_COLUMNS)[number]['key']
@@ -17,4 +18,5 @@ export const DEFAULT_REPO_COLUMN_VISIBILITY: VisibilityState = {
   language: true,
   archived: true,
   updated: true,
+  local: true,
 }

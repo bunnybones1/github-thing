@@ -41,6 +41,17 @@ The login request asks for `read:org`, `repo`, and `read:user`.
 
 If your worker runs on a different origin, set `WORKER_ORIGIN` before `pnpm dev`.
 
+## Git daemon (optional)
+
+If you run `git-daemon` locally, you can pair it with the UI to enable one-click
+clone from the repo table.
+
+1. Start `git-daemon` and add your app origin to its allowlist.
+2. In the UI, enter the daemon base URL and click "Connect".
+3. Start pairing and confirm the code to store an access token.
+4. The "Local" column shows a Clone button when a repo is not present
+   (based on `v1/git/status` returning 404).
+
 ## Linting
 
 ```bash

@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -10,15 +10,24 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { formatDate } from '../lib/format'
+import type { RepoCloneStatus } from '../lib/gitDaemon'
 import type { RepoColumnKey, RepoColumnVisibility } from '../lib/repoColumns'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
 import type { GitHubRepo } from '../types'
+
+type GitDaemonControls = {
+  enabled: boolean
+  repoStatuses: Record<string, RepoCloneStatus | undefined>
+  onCheckRepoStatus: (repoPath: string) => void
+  onCloneRepo: (repo: GitHubRepo) => void
+}
 
 type RepoPanelProps = {
   repos: GitHubRepo[]
   totalCount?: number
   columnVisibility: RepoColumnVisibility
   onColumnVisibilityChange: Dispatch<SetStateAction<RepoColumnVisibility>>
+  gitDaemon?: GitDaemonControls | null
 }
 
 const RepoPanel = ({
@@ -26,13 +35,70 @@ const RepoPanel = ({
   totalCount,
   columnVisibility,
   onColumnVisibilityChange,
+  gitDaemon,
 }: RepoPanelProps) => {
   const [sorting, setSorting] = useLocalStorageState<SortingState>(
     'repo-table-sorting-v1',
     [{ id: 'name', desc: false }],
   )
-  const columns = useMemo<ColumnDef<GitHubRepo>[]>(
-    () => [
+  const columns = useMemo<ColumnDef<GitHubRepo>[]>(() => {
+    const CloneCell = ({ repo }: { repo: GitHubRepo }) => {
+      const repoPath = repo.full_name || ''
+      const enabled = gitDaemon?.enabled ?? false
+      const onCheckRepoStatus = gitDaemon?.onCheckRepoStatus
+      const onCloneRepo = gitDaemon?.onCloneRepo
+      const status = repoPath
+        ? (gitDaemon?.repoStatuses[repoPath] ?? 'unknown')
+        : 'unknown'
+      const canCheck = Boolean(enabled && repoPath)
+
+      useEffect(() => {
+        if (!canCheck) return
+        if (status !== 'unknown' && status !== 'error') return
+        onCheckRepoStatus?.(repoPath)
+      }, [canCheck, onCheckRepoStatus, repoPath, status])
+
+      if (!enabled) {
+        return <span className="table-muted">N/A</span>
+      }
+      if (!repoPath) {
+        return <span className="table-muted">Unavailable</span>
+      }
+      if (status === 'missing') {
+        return (
+          <button
+            className="button ghost small"
+            type="button"
+            onClick={() => onCloneRepo?.(repo)}
+          >
+            Clone
+          </button>
+        )
+      }
+      if (status === 'exists') {
+        return <span className="pill">Cloned</span>
+      }
+      if (status === 'cloning') {
+        return <span className="table-muted">Cloning...</span>
+      }
+      if (status === 'checking') {
+        return <span className="table-muted">Checking...</span>
+      }
+      if (status === 'error') {
+        return (
+          <button
+            className="button ghost small"
+            type="button"
+            onClick={() => onCheckRepoStatus?.(repoPath)}
+          >
+            Retry
+          </button>
+        )
+      }
+      return <span className="table-muted">...</span>
+    }
+
+    return [
       {
         id: 'name',
         header: 'Repository',
@@ -71,11 +137,15 @@ const RepoPanel = ({
         accessorFn: (row) => row.updated_at || '',
         cell: ({ row }) => formatDate(row.original.updated_at),
       },
-    ],
-    [],
-  )
+      {
+        id: 'local',
+        header: 'Local',
+        enableSorting: false,
+        cell: ({ row }) => <CloneCell repo={row.original} />,
+      },
+    ]
+  }, [gitDaemon])
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: repos,
     columns,
@@ -93,6 +163,7 @@ const RepoPanel = ({
       language: { template: 'minmax(130px, 1fr)', min: 130 },
       archived: { template: 'minmax(120px, 1fr)', min: 120 },
       updated: { template: 'minmax(150px, 1fr)', min: 150 },
+      local: { template: 'minmax(140px, 1fr)', min: 140 },
     }
     const visible = table.getVisibleLeafColumns()
     const template = visible

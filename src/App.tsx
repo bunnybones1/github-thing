@@ -90,6 +90,7 @@ function App() {
         onLoadAccess={gitHubAccess.onLoadAccess}
         daemonBaseUrl={gitDaemon.baseUrl}
         daemonStatus={gitDaemon.status}
+        daemonIsThinking={gitDaemon.isThinking}
         daemonError={gitDaemon.error}
         daemonMeta={gitDaemon.meta}
         pairing={gitDaemon.pairing}

@@ -13,6 +13,7 @@ type ConnectionsHubProps = {
   onLoadAccess: () => void
   daemonBaseUrl: string
   daemonStatus: 'idle' | 'checking' | 'ready' | 'error'
+  daemonIsThinking: boolean
   daemonError: string
   daemonMeta: GitDaemonMeta | null
   pairing: GitDaemonPairStartResponse | null
@@ -35,6 +36,7 @@ const ConnectionsHub = ({
   onLoadAccess,
   daemonBaseUrl,
   daemonStatus,
+  daemonIsThinking,
   daemonError,
   daemonMeta,
   pairing,
@@ -50,8 +52,11 @@ const ConnectionsHub = ({
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isDaemonModalOpen, setIsDaemonModalOpen] = useState(false)
   const [isBlinking, setIsBlinking] = useState(false)
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true)
+  const headerRef = useRef<HTMLElement | null>(null)
   const blinkTimeoutRef = useRef<number | null>(null)
   const isBlinkingActiveRef = useRef(false)
+  const isBlinkingRef = useRef(false)
 
   const authStatusLabel =
     authStatus === 'authenticated'
@@ -68,14 +73,14 @@ const ConnectionsHub = ({
           ? 'Error'
           : 'Not connected'
   const daemonRobotSrc =
-    daemonStatus === 'ready'
-      ? isBlinking
-        ? '/git-daemon/normal-blink.png'
-        : '/git-daemon/normal.png'
-      : daemonStatus === 'checking'
+    daemonStatus === 'error'
+      ? '/git-daemon/error.png'
+      : daemonStatus === 'checking' || daemonIsThinking
         ? '/git-daemon/thinking.png'
-        : daemonStatus === 'error'
-          ? '/git-daemon/error.png'
+        : daemonStatus === 'ready'
+          ? isBlinking
+            ? '/git-daemon/normal-blink.png'
+            : '/git-daemon/normal.png'
           : '/git-daemon/sleeping.png'
 
   useEffect(() => {
@@ -84,11 +89,22 @@ const ConnectionsHub = ({
       window.clearTimeout(blinkTimeoutRef.current)
       blinkTimeoutRef.current = null
     }
+    const setBlinking = (value: boolean) => {
+      isBlinkingRef.current = value
+      setIsBlinking(value)
+    }
+    const stopBlinking = () => {
+      if (!isBlinkingRef.current) return
+      isBlinkingRef.current = false
+      window.setTimeout(() => {
+        setIsBlinking(false)
+      }, 0)
+    }
 
-    if (daemonStatus !== 'ready') {
+    if (daemonStatus !== 'ready' || daemonIsThinking) {
       isBlinkingActiveRef.current = false
       clearBlinkTimeout()
-      setIsBlinking(false)
+      stopBlinking()
       return
     }
 
@@ -99,25 +115,39 @@ const ConnectionsHub = ({
       const nextDelay = 3200 + Math.random() * 4200
       blinkTimeoutRef.current = window.setTimeout(() => {
         if (!isBlinkingActiveRef.current) return
-        setIsBlinking(true)
+        setBlinking(true)
         blinkTimeoutRef.current = window.setTimeout(() => {
-          setIsBlinking(false)
+          setBlinking(false)
           scheduleBlink()
         }, 160)
       }, nextDelay)
     }
 
+    stopBlinking()
     scheduleBlink()
 
     return () => {
       isBlinkingActiveRef.current = false
       clearBlinkTimeout()
     }
-  }, [daemonStatus])
+  }, [daemonIsThinking, daemonStatus])
+
+  useEffect(() => {
+    const headerEl = headerRef.current
+    if (!headerEl || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsHeaderVisible(entry.isIntersecting)
+      },
+      { threshold: 0.15 },
+    )
+    observer.observe(headerEl)
+    return () => observer.disconnect()
+  }, [])
 
   return (
     <>
-      <header className="app-header">
+      <header className="app-header" ref={headerRef}>
         <div className="header-brand">
           <p className="header-eyebrow">GitHub Access Map</p>
           <p className="header-title">Connection hub</p>
@@ -153,6 +183,20 @@ const ConnectionsHub = ({
           </button>
         </div>
       </header>
+
+      {!isHeaderVisible ? (
+        <button
+          className="daemon-floater"
+          type="button"
+          aria-label={`Open Git daemon (${daemonStatusLabel})`}
+          onClick={() => {
+            setIsDaemonModalOpen(true)
+            setIsAuthModalOpen(false)
+          }}
+        >
+          <img className="daemon-robot" src={daemonRobotSrc} alt="" aria-hidden="true" />
+        </button>
+      ) : null}
 
       <ModalShell
         isOpen={isAuthModalOpen}

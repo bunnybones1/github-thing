@@ -25,6 +25,7 @@ type GitDaemonControls = {
 type UseGitDaemonReturn = {
   baseUrl: string
   status: 'idle' | 'checking' | 'ready' | 'error'
+  isThinking: boolean
   error: string
   meta: GitDaemonMeta | null
   pairing: GitDaemonPairStartResponse | null
@@ -476,9 +477,15 @@ export const useGitDaemon = (): UseGitDaemonReturn => {
     ],
   )
 
+  const isThinking = useMemo(
+    () => Object.values(repoCloneStatuses).some((status) => status === 'cloning'),
+    [repoCloneStatuses],
+  )
+
   return {
     baseUrl: daemonBaseUrl,
     status: daemonStatus,
+    isThinking,
     error: daemonError,
     meta: daemonMeta,
     pairing: pairingInfo,

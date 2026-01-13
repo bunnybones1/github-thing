@@ -64,24 +64,35 @@ const ConnectionsHub = ({
       : authStatus === 'checking'
         ? 'Checking'
         : 'Sign in'
-  const daemonStatusLabel =
-    daemonStatus === 'ready'
-      ? 'Connected'
-      : daemonStatus === 'checking'
-        ? 'Checking'
-        : daemonStatus === 'error'
-          ? 'Error'
-          : 'Not connected'
-  const daemonRobotSrc =
+  const needsPairing =
+    daemonStatus === 'ready' && daemonMeta?.pairing.required && !hasToken
+  const daemonStatusTone = needsPairing ? 'checking' : daemonStatus
+  const daemonUiState =
     daemonStatus === 'error'
-      ? '/git-daemon/error.png'
+      ? 'error'
       : daemonStatus === 'checking' || daemonIsThinking
-        ? '/git-daemon/thinking.png'
-        : daemonStatus === 'ready'
-          ? isBlinking
-            ? '/git-daemon/normal-blink.png'
-            : '/git-daemon/normal.png'
-          : '/git-daemon/sleeping.png'
+        ? 'thinking'
+        : needsPairing
+          ? 'waking'
+          : daemonStatus === 'ready'
+            ? 'ready'
+            : 'sleeping'
+  const daemonStatusLabelMap = {
+    error: 'Error',
+    thinking: 'Checking',
+    waking: 'Pairing required',
+    ready: 'Connected',
+    sleeping: 'Not connected',
+  } as const
+  const daemonRobotSrcMap = {
+    error: '/git-daemon/error.png',
+    thinking: '/git-daemon/thinking.png',
+    waking: '/git-daemon/waking.png',
+    ready: isBlinking ? '/git-daemon/normal-blink.png' : '/git-daemon/normal.png',
+    sleeping: '/git-daemon/sleeping.png',
+  } as const
+  const daemonStatusLabel = daemonStatusLabelMap[daemonUiState]
+  const daemonRobotSrc = daemonRobotSrcMap[daemonUiState]
 
   useEffect(() => {
     const clearBlinkTimeout = () => {
@@ -101,7 +112,7 @@ const ConnectionsHub = ({
       }, 0)
     }
 
-    if (daemonStatus !== 'ready' || daemonIsThinking) {
+    if (daemonStatus !== 'ready' || daemonIsThinking || needsPairing) {
       isBlinkingActiveRef.current = false
       clearBlinkTimeout()
       stopBlinking()
@@ -130,7 +141,7 @@ const ConnectionsHub = ({
       isBlinkingActiveRef.current = false
       clearBlinkTimeout()
     }
-  }, [daemonIsThinking, daemonStatus])
+  }, [daemonIsThinking, daemonStatus, needsPairing])
 
   useEffect(() => {
     const headerEl = headerRef.current
@@ -173,7 +184,7 @@ const ConnectionsHub = ({
             }}
           >
             <span>Git daemon</span>
-            <span className={`menu-status ${daemonStatus}`}>{daemonStatusLabel}</span>
+            <span className={`menu-status ${daemonStatusTone}`}>{daemonStatusLabel}</span>
             <img
               className="daemon-robot"
               src={daemonRobotSrc}

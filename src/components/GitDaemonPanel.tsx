@@ -33,14 +33,17 @@ const GitDaemonPanel = ({
 }: GitDaemonPanelProps) => {
   const connectLabel =
     status === 'checking' ? 'Checking...' : status === 'ready' ? 'Reconnect' : 'Connect'
-  const statusLabel =
-    status === 'ready'
+  const requiresPairing = status === 'ready' && meta?.pairing.required && !hasToken
+  const statusLabel = requiresPairing
+    ? 'Pairing required'
+    : status === 'ready'
       ? 'Connected'
       : status === 'checking'
         ? 'Checking'
         : status === 'error'
           ? 'Error'
           : 'Not connected'
+  const statusTone = requiresPairing ? 'checking' : status
 
   return (
     <section className="auth-panel daemon-panel">
@@ -79,7 +82,7 @@ const GitDaemonPanel = ({
         </div>
       </div>
       <div className="daemon-status">
-        <span className={`status-pill ${status}`}>{statusLabel}</span>
+        <span className={`status-pill ${statusTone}`}>{statusLabel}</span>
         <span className="daemon-meta">
           {meta
             ? `Daemon v${meta.version} · Workspace ${

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { GitDaemonMeta, GitDaemonPairStartResponse } from '../lib/gitDaemon'
+import type { GitHubUser } from '../types'
 import AuthPanel from './AuthPanel'
 import GitDaemonPanel from './GitDaemonPanel'
 import ModalShell from './ModalShell'
@@ -11,6 +12,11 @@ type ConnectionsHubProps = {
   onLogin: () => void
   onLogout: () => void
   onLoadAccess: () => void
+  profile: GitHubUser | null
+  orgCount: number
+  repoCount: number
+  onRefresh: () => void
+  lastUpdatedLabel: string | null
   daemonBaseUrl: string
   daemonStatus: 'idle' | 'checking' | 'ready' | 'error'
   daemonIsThinking: boolean
@@ -34,6 +40,11 @@ const ConnectionsHub = ({
   onLogin,
   onLogout,
   onLoadAccess,
+  profile,
+  orgCount,
+  repoCount,
+  onRefresh,
+  lastUpdatedLabel,
   daemonBaseUrl,
   daemonStatus,
   daemonIsThinking,
@@ -219,9 +230,14 @@ const ConnectionsHub = ({
           status={authStatus}
           loading={loading}
           canLoad={canRefresh}
+          profile={profile}
+          orgCount={orgCount}
+          repoCount={repoCount}
+          lastUpdatedLabel={lastUpdatedLabel}
           onLogin={onLogin}
           onLogout={onLogout}
           onLoadAccess={onLoadAccess}
+          onRefresh={onRefresh}
         />
       </ModalShell>
 

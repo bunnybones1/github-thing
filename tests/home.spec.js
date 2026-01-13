@@ -139,10 +139,11 @@ test('loads orgs and repos and shows rate limit info', async ({ page }) => {
   await dismissSplash(page)
   await openGitHubModal(page)
   await page.getByRole('button', { name: /load access/i }).click()
-  await closeGitHubModal(page)
 
   await expect(page.getByText('Signed in as')).toBeVisible()
-  await expect(page.getByRole('heading', { name: /octocat/i })).toBeVisible()
+  await expect(page.locator('.auth-subtitle strong')).toHaveText('octocat')
+
+  await closeGitHubModal(page)
   await expect(page.getByRole('link', { name: 'openai', exact: true })).toBeVisible()
 
   await page.getByRole('tab', { name: /repositories/i }).click()

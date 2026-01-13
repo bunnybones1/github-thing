@@ -8,7 +8,6 @@ import OrgPanel from './components/OrgPanel'
 import RateLimitFooter from './components/RateLimitFooter'
 import RepoPanel from './components/RepoPanel'
 import SplashModal from './components/SplashModal'
-import Summary from './components/Summary'
 import TabHeader from './components/TabHeader'
 import { useGitHubAccess } from './hooks/useGitHubAccess'
 import { useGitDaemon } from './hooks/useGitDaemon'
@@ -88,6 +87,11 @@ function App() {
         onLogin={gitHubAccess.onLogin}
         onLogout={gitHubAccess.onLogout}
         onLoadAccess={gitHubAccess.onLoadAccess}
+        profile={profile}
+        orgCount={orgs.length}
+        repoCount={repos.length}
+        onRefresh={gitHubAccess.onRefresh}
+        lastUpdatedLabel={lastUpdatedLabel}
         daemonBaseUrl={gitDaemon.baseUrl}
         daemonStatus={gitDaemon.status}
         daemonIsThinking={gitDaemon.isThinking}
@@ -107,18 +111,6 @@ function App() {
       <CacheNotice isCached={isCached} lastUpdatedLabel={lastUpdatedLabel} />
 
       {error ? <div className="alert error">{error}</div> : null}
-
-      {profile ? (
-        <Summary
-          profile={profile}
-          orgCount={orgs.length}
-          repoCount={repos.length}
-          onRefresh={gitHubAccess.onRefresh}
-          canRefresh={canRefresh}
-          loading={loading}
-          lastUpdatedLabel={lastUpdatedLabel}
-        />
-      ) : null}
 
       <div className="panel-stack">
         <div className="panel-tabs-wrapper" ref={tabsWrapperRef}>

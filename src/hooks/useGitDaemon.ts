@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { GIT_DAEMON_TOKEN_KEY, GIT_DAEMON_URL_KEY } from '../lib/constants'
+import {
+  GIT_DAEMON_AUTO_CONNECT_KEY,
+  GIT_DAEMON_TOKEN_KEY,
+  GIT_DAEMON_URL_KEY,
+} from '../lib/constants'
 import {
   getDefaultGitDaemonBaseUrl,
   normalizeGitDaemonBaseUrl,
@@ -49,6 +53,10 @@ export const useGitDaemon = (): UseGitDaemonReturn => {
     GIT_DAEMON_TOKEN_KEY,
     null,
   )
+  const [shouldAutoConnect, setShouldAutoConnect] = useLocalStorageState(
+    GIT_DAEMON_AUTO_CONNECT_KEY,
+    false,
+  )
   const [daemonStatus, setDaemonStatus] = useState<
     'idle' | 'checking' | 'ready' | 'error'
   >('idle')
@@ -66,6 +74,7 @@ export const useGitDaemon = (): UseGitDaemonReturn => {
   const cloneInFlightRef = useRef<Set<string>>(new Set())
   const clonePollTimeoutsRef = useRef<Record<string, number>>({})
   const clonePollAttemptsRef = useRef<Record<string, number>>({})
+  const autoConnectAttemptedRef = useRef(false)
 
   useEffect(() => {
     return () => {
@@ -101,6 +110,7 @@ export const useGitDaemon = (): UseGitDaemonReturn => {
   }, [setDaemonToken])
 
   const handleDaemonConnect = useCallback(async () => {
+    autoConnectAttemptedRef.current = true
     const normalized = normalizeGitDaemonBaseUrl(daemonBaseUrl)
     if (!normalized) {
       setDaemonError('Enter the git-daemon base URL.')
@@ -122,13 +132,14 @@ export const useGitDaemon = (): UseGitDaemonReturn => {
       const data = (await response.json()) as GitDaemonMeta
       setDaemonMeta(data)
       setDaemonStatus('ready')
+      setShouldAutoConnect(true)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to reach git-daemon.'
       setDaemonStatus('error')
       setDaemonMeta(null)
       setDaemonError(message)
     }
-  }, [daemonBaseUrl, readDaemonError, setDaemonBaseUrl])
+  }, [daemonBaseUrl, readDaemonError, setDaemonBaseUrl, setShouldAutoConnect])
 
   const handleBaseUrlChange = useCallback(
     (value: string) => {
@@ -242,6 +253,12 @@ export const useGitDaemon = (): UseGitDaemonReturn => {
       resetDaemonTracking()
     }
   }, [daemonReady, resetDaemonTracking])
+
+  useEffect(() => {
+    if (!shouldAutoConnect || autoConnectAttemptedRef.current) return
+    autoConnectAttemptedRef.current = true
+    void handleDaemonConnect()
+  }, [handleDaemonConnect, shouldAutoConnect])
 
   const checkRepoStatus = useCallback(
     async (repoPath: string, options?: { force?: boolean }) => {

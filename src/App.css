@@ -424,6 +424,13 @@
   gap: 6px;
 }
 
+.connection-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .auth-title {
   margin: 0;
   font-weight: 600;
@@ -437,6 +444,16 @@
   margin: 0;
   font-size: 1rem;
   color: var(--ink);
+}
+
+.auth-subtitle strong {
+  color: var(--ink);
+}
+
+.auth-meta {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-muted);
 }
 
 .auth-actions {
@@ -1165,6 +1182,11 @@
   .menu-button {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .connection-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .hero {

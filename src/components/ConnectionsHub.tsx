@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { GitDaemonMeta, GitDaemonPairStartResponse } from '../lib/gitDaemon'
 import AuthPanel from './AuthPanel'
 import GitDaemonPanel from './GitDaemonPanel'
@@ -49,6 +49,9 @@ const ConnectionsHub = ({
 }: ConnectionsHubProps) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isDaemonModalOpen, setIsDaemonModalOpen] = useState(false)
+  const [isBlinking, setIsBlinking] = useState(false)
+  const blinkTimeoutRef = useRef<number | null>(null)
+  const isBlinkingActiveRef = useRef(false)
 
   const authStatusLabel =
     authStatus === 'authenticated'
@@ -64,6 +67,53 @@ const ConnectionsHub = ({
         : daemonStatus === 'error'
           ? 'Error'
           : 'Not connected'
+  const daemonRobotSrc =
+    daemonStatus === 'ready'
+      ? isBlinking
+        ? '/git-daemon/normal-blink.png'
+        : '/git-daemon/normal.png'
+      : daemonStatus === 'checking'
+        ? '/git-daemon/thinking.png'
+        : daemonStatus === 'error'
+          ? '/git-daemon/error.png'
+          : '/git-daemon/sleeping.png'
+
+  useEffect(() => {
+    const clearBlinkTimeout = () => {
+      if (blinkTimeoutRef.current === null) return
+      window.clearTimeout(blinkTimeoutRef.current)
+      blinkTimeoutRef.current = null
+    }
+
+    if (daemonStatus !== 'ready') {
+      isBlinkingActiveRef.current = false
+      clearBlinkTimeout()
+      setIsBlinking(false)
+      return
+    }
+
+    isBlinkingActiveRef.current = true
+
+    const scheduleBlink = () => {
+      if (!isBlinkingActiveRef.current) return
+      const nextDelay = 3200 + Math.random() * 4200
+      blinkTimeoutRef.current = window.setTimeout(() => {
+        if (!isBlinkingActiveRef.current) return
+        setIsBlinking(true)
+        blinkTimeoutRef.current = window.setTimeout(() => {
+          setIsBlinking(false)
+          scheduleBlink()
+        }, 160)
+      }, nextDelay)
+    }
+
+    scheduleBlink()
+
+    return () => {
+      isBlinkingActiveRef.current = false
+      clearBlinkTimeout()
+    }
+  }, [daemonStatus])
 
   return (
     <>
@@ -85,7 +135,7 @@ const ConnectionsHub = ({
             <span className={`menu-status ${authStatus}`}>{authStatusLabel}</span>
           </button>
           <button
-            className="menu-button"
+            className="menu-button menu-button-daemon"
             type="button"
             onClick={() => {
               setIsDaemonModalOpen(true)
@@ -94,6 +144,12 @@ const ConnectionsHub = ({
           >
             <span>Git daemon</span>
             <span className={`menu-status ${daemonStatus}`}>{daemonStatusLabel}</span>
+            <img
+              className="daemon-robot"
+              src={daemonRobotSrc}
+              alt=""
+              aria-hidden="true"
+            />
           </button>
         </div>
       </header>

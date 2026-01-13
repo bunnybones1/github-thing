@@ -42,6 +42,38 @@ const mockAuthSession = async (page, authenticated) => {
   )
 }
 
+const dismissSplash = async (page) => {
+  const beginButton = page.getByRole('button', { name: /^begin$/i })
+  try {
+    await beginButton.waitFor({ state: 'visible', timeout: 1000 })
+    await beginButton.click()
+  } catch {
+    // Splash already dismissed.
+  }
+}
+
+const openGitHubModal = async (page) => {
+  await page.getByRole('button', { name: /github connection/i }).click()
+}
+
+const closeGitHubModal = async (page) => {
+  const closeButton = page.getByRole('button', { name: /close github connection/i })
+  if (await closeButton.count()) {
+    await closeButton.click()
+  }
+}
+
+const openGitDaemonModal = async (page) => {
+  await page.getByRole('button', { name: /git daemon/i }).click()
+}
+
+const closeGitDaemonModal = async (page) => {
+  const closeButton = page.getByRole('button', { name: /close git daemon/i })
+  if (await closeButton.count()) {
+    await closeButton.click()
+  }
+}
+
 test('loads the access map landing page', async ({ page }) => {
   await mockAuthSession(page, false)
   await page.goto('/')
@@ -49,6 +81,8 @@ test('loads the access map landing page', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: /List every org and repo you can reach/i }),
   ).toBeVisible()
+  await dismissSplash(page)
+  await openGitHubModal(page)
   await expect(page.getByRole('button', { name: /sign in with github/i })).toBeVisible()
 })
 
@@ -56,6 +90,8 @@ test('requires login before loading data', async ({ page }) => {
   await mockAuthSession(page, false)
   await page.goto('/')
 
+  await dismissSplash(page)
+  await openGitHubModal(page)
   await expect(page.getByRole('button', { name: /sign in with github/i })).toBeVisible()
   await expect(page.getByRole('button', { name: /load access/i })).toHaveCount(0)
 })
@@ -100,7 +136,10 @@ test('loads orgs and repos and shows rate limit info', async ({ page }) => {
   })
 
   await page.goto('/')
+  await dismissSplash(page)
+  await openGitHubModal(page)
   await page.getByRole('button', { name: /load access/i }).click()
+  await closeGitHubModal(page)
 
   await expect(page.getByText('Signed in as')).toBeVisible()
   await expect(page.getByRole('heading', { name: /octocat/i })).toBeVisible()
@@ -154,7 +193,10 @@ test('uses cached data after refresh', async ({ page }) => {
   })
 
   await page.goto('/')
+  await dismissSplash(page)
+  await openGitHubModal(page)
   await page.getByRole('button', { name: /load access/i }).click()
+  await closeGitHubModal(page)
   await page.getByRole('tab', { name: /repositories/i }).click()
   await expect(page.getByRole('link', { name: 'cached/repo' })).toBeVisible()
 
@@ -224,7 +266,10 @@ test('filters archived repos', async ({ page }) => {
   })
 
   await page.goto('/')
+  await dismissSplash(page)
+  await openGitHubModal(page)
   await page.getByRole('button', { name: /load access/i }).click()
+  await closeGitHubModal(page)
   await page.getByRole('tab', { name: /repositories/i }).click()
 
   await expect(page.getByRole('link', { name: 'filter/active' })).toBeVisible()
@@ -263,7 +308,82 @@ test('surfaces API errors', async ({ page }) => {
   })
 
   await page.goto('/')
+  await dismissSplash(page)
+  await openGitHubModal(page)
   await page.getByRole('button', { name: /load access/i }).click()
+  await closeGitHubModal(page)
 
   await expect(page.getByText(/Sign in with GitHub to continue/i)).toBeVisible()
+})
+
+test('dismisses splash and persists it', async ({ page }) => {
+  await mockAuthSession(page, false)
+  await page.goto('/')
+
+  const beginButton = page.getByRole('button', { name: /^begin$/i })
+  await expect(beginButton).toBeVisible()
+  await beginButton.click()
+  await expect(beginButton).toHaveCount(0)
+
+  await page.reload()
+  await expect(beginButton).toHaveCount(0)
+})
+
+test('opens and closes connection modals', async ({ page }) => {
+  await mockAuthSession(page, false)
+  await page.goto('/')
+
+  await dismissSplash(page)
+  await openGitHubModal(page)
+  await expect(page.getByRole('button', { name: /sign in with github/i })).toBeVisible()
+  await closeGitHubModal(page)
+  await expect(page.getByRole('button', { name: /sign in with github/i })).toHaveCount(0)
+
+  await openGitDaemonModal(page)
+  await expect(page.getByLabel('Base URL')).toBeVisible()
+  await closeGitDaemonModal(page)
+  await expect(page.getByLabel('Base URL')).toHaveCount(0)
+})
+
+test('shows pairing required and waking daemon state', async ({ page }) => {
+  await mockAuthSession(page, false)
+  await page.route('**/v1/meta', async (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        version: '1.0.0',
+        pairing: { required: true, paired: false },
+        workspace: { configured: true },
+      }),
+    }),
+  )
+
+  await page.goto('/')
+  await dismissSplash(page)
+  await openGitDaemonModal(page)
+  await page.getByRole('button', { name: /^connect$/i }).click()
+
+  const daemonButton = page.locator('.menu-button-daemon')
+  await expect(daemonButton).toContainText('Pairing required')
+  await expect(page.locator('.menu-button-daemon .daemon-robot')).toHaveAttribute(
+    'src',
+    /waking\.png$/,
+  )
+})
+
+test('shows the daemon floater when header is out of view', async ({ page }) => {
+  await mockAuthSession(page, false)
+  await page.goto('/')
+  await dismissSplash(page)
+  await page.addStyleTag({ content: 'body { min-height: 200vh; }' })
+
+  const floater = page.locator('.daemon-floater')
+  await expect(floater).toHaveCount(0)
+
+  await page.evaluate(() => globalThis.scrollTo(0, globalThis.document.body.scrollHeight))
+  await expect(floater).toBeVisible()
+
+  await floater.click()
+  await expect(page.getByLabel('Base URL')).toBeVisible()
 })

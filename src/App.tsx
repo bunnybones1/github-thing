@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { readCache, writeCache } from './cache'
 import AuthPanel from './components/AuthPanel'
 import Hero from './components/Hero'
@@ -11,7 +11,7 @@ import RateLimitFooter from './components/RateLimitFooter'
 import RepoPanel from './components/RepoPanel'
 import Summary from './components/Summary'
 import TabHeader from './components/TabHeader'
-import { GITHUB_API } from './config'
+import { GIT_DAEMON_TOKEN, GITHUB_API } from './config'
 import {
   ORG_FILTER_KEY,
   PERSONAL_OTHER_KEY,
@@ -33,15 +33,28 @@ import {
   fetchJson,
   pickMoreConservativeRate,
 } from './lib/githubApi'
-import type { GitHubOrg, GitHubRepo, GitHubUser, RateLimitInfo } from './types'
+import {
+  checkDaemonAvailable,
+  startHealthcheckRun,
+  waitForHealthcheckResult,
+} from './lib/daemonApi'
+import type {
+  GitHubOrg,
+  GitHubRepo,
+  GitHubUser,
+  RateLimitInfo,
+  RepoRecord,
+} from './types'
 import './App.css'
+
+const getRepoKey = (repo: RepoRecord) => repo.full_name ?? String(repo.id)
 
 function App() {
   const [authStatus, setAuthStatus] = useState<
     'checking' | 'authenticated' | 'unauthenticated'
   >('checking')
   const [orgs, setOrgs] = useState<GitHubOrg[]>([])
-  const [repos, setRepos] = useState<GitHubRepo[]>([])
+  const [repos, setRepos] = useState<RepoRecord[]>([])
   const [profile, setProfile] = useState<GitHubUser | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
   const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null)
@@ -71,8 +84,12 @@ function App() {
       hidePublic: false,
     },
   )
+  const [daemonAvailability, setDaemonAvailability] = useState<
+    'unknown' | 'available' | 'unavailable'
+  >('unknown')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const healthcheckAttempted = useRef(new Set<string>())
 
   useEffect(() => {
     let isActive = true
@@ -198,6 +215,101 @@ function App() {
     visibleRepos,
   ])
 
+  const updateRepoHealthchecks = useCallback(
+    (repoKey: string, healthchecks: RepoRecord['healthchecks']) => {
+      setRepos((prev) => {
+        let didUpdate = false
+        const next = prev.map((repo) => {
+          if (getRepoKey(repo) !== repoKey) return repo
+          didUpdate = true
+          return { ...repo, healthchecks }
+        })
+        return didUpdate ? next : prev
+      })
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (activeTab !== 'repos') return
+    if (columnVisibility.healthchecks === false) return
+    if (!GIT_DAEMON_TOKEN) return
+    if (daemonAvailability === 'unavailable') return
+    if (!repos.length) return
+
+    let isActive = true
+    const controller = new AbortController()
+
+    const runHealthchecks = async () => {
+      const isAvailable =
+        daemonAvailability === 'available'
+          ? true
+          : await checkDaemonAvailable(controller.signal)
+      if (!isActive) return
+      if (!isAvailable) {
+        setDaemonAvailability('unavailable')
+        return
+      }
+      if (daemonAvailability !== 'available') {
+        setDaemonAvailability('available')
+      }
+
+      const pending = repos.filter((repo) => {
+        if (!repo.full_name) return false
+        if (repo.healthchecks) return false
+        const key = getRepoKey(repo)
+        if (healthcheckAttempted.current.has(key)) return false
+        return true
+      })
+
+      if (!pending.length) return
+
+      for (const repo of pending) {
+        const key = getRepoKey(repo)
+        healthcheckAttempted.current.add(key)
+      }
+
+      const queue = [...pending]
+      const limit = Math.min(3, queue.length)
+      const workers = Array.from({ length: limit }, async () => {
+        while (queue.length && isActive) {
+          const repo = queue.shift()
+          if (!repo || !repo.full_name) continue
+          const repoKey = getRepoKey(repo)
+          try {
+            const jobId = await startHealthcheckRun(repo.full_name, controller.signal)
+            if (!jobId || !isActive) {
+              continue
+            }
+            const result = await waitForHealthcheckResult(jobId, {
+              signal: controller.signal,
+            })
+            if (result && isActive) {
+              updateRepoHealthchecks(repoKey, result)
+            }
+          } catch {
+            // Ignore healthcheck failures and keep the UI responsive.
+          }
+        }
+      })
+
+      await Promise.all(workers)
+    }
+
+    runHealthchecks()
+
+    return () => {
+      isActive = false
+      controller.abort()
+    }
+  }, [
+    activeTab,
+    columnVisibility.healthchecks,
+    daemonAvailability,
+    repos,
+    updateRepoHealthchecks,
+  ])
+
   const handleToggleOrg = (login: string) => {
     setOrgFilters((prev) => ({
       ...prev,
@@ -238,6 +350,8 @@ function App() {
   const fetchAccess = async () => {
     setLoading(true)
     setError('')
+    healthcheckAttempted.current.clear()
+    setDaemonAvailability('unknown')
     let latestRateLimit: RateLimitInfo | null = null
     const captureRateLimit = (info: RateLimitInfo) => {
       latestRateLimit = pickMoreConservativeRate(latestRateLimit, info)
@@ -257,7 +371,8 @@ function App() {
       const updatedAt = new Date().toISOString()
       setProfile(userData)
       setOrgs(orgData)
-      setRepos(repoData)
+      const nextRepos: RepoRecord[] = repoData
+      setRepos(nextRepos)
       setRateLimit(latestRateLimit)
       setLastUpdated(updatedAt)
       setIsCached(false)
@@ -265,7 +380,7 @@ function App() {
         await writeCache({
           profile: userData,
           orgs: orgData,
-          repos: repoData,
+          repos: nextRepos,
           lastUpdated: updatedAt,
           rateLimit: latestRateLimit,
         })

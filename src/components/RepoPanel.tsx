@@ -12,10 +12,24 @@ import {
 import { formatDate } from '../lib/format'
 import type { RepoColumnKey, RepoColumnVisibility } from '../lib/repoColumns'
 import { useLocalStorageState } from '../hooks/useLocalStorageState'
-import type { GitHubRepo } from '../types'
+import type { HealthcheckStatus, RepoRecord } from '../types'
+
+const HEALTHCHECK_LABELS: Record<HealthcheckStatus, string> = {
+  'pass-full': 'Pass',
+  'pass-partial': 'Partial',
+  failed: 'Failed',
+  na: 'N/A',
+}
+
+const HEALTHCHECK_SORT_ORDER: Record<HealthcheckStatus, number> = {
+  failed: 4,
+  'pass-partial': 3,
+  'pass-full': 2,
+  na: 1,
+}
 
 type RepoPanelProps = {
-  repos: GitHubRepo[]
+  repos: RepoRecord[]
   totalCount?: number
   columnVisibility: RepoColumnVisibility
   onColumnVisibilityChange: Dispatch<SetStateAction<RepoColumnVisibility>>
@@ -31,7 +45,7 @@ const RepoPanel = ({
     'repo-table-sorting-v1',
     [{ id: 'name', desc: false }],
   )
-  const columns = useMemo<ColumnDef<GitHubRepo>[]>(
+  const columns = useMemo<ColumnDef<RepoRecord>[]>(
     () => [
       {
         id: 'name',
@@ -71,6 +85,26 @@ const RepoPanel = ({
         accessorFn: (row) => row.updated_at || '',
         cell: ({ row }) => formatDate(row.original.updated_at),
       },
+      {
+        id: 'healthchecks',
+        header: 'Healthchecks',
+        accessorFn: (row) =>
+          HEALTHCHECK_SORT_ORDER[row.healthchecks?.status ?? 'na'],
+        cell: ({ row }) => {
+          const status = row.original.healthchecks?.status ?? 'na'
+          const summary = row.original.healthchecks?.summary
+          const title =
+            summary ||
+            (status === 'na'
+              ? 'No healthchecks run.'
+              : 'No summary available.')
+          return (
+            <span className={`badge healthcheck ${status}`} title={title}>
+              {HEALTHCHECK_LABELS[status]}
+            </span>
+          )
+        },
+      },
     ],
     [],
   )
@@ -93,6 +127,7 @@ const RepoPanel = ({
       language: { template: 'minmax(130px, 1fr)', min: 130 },
       archived: { template: 'minmax(120px, 1fr)', min: 120 },
       updated: { template: 'minmax(150px, 1fr)', min: 150 },
+      healthchecks: { template: 'minmax(150px, 1fr)', min: 150 },
     }
     const visible = table.getVisibleLeafColumns()
     const template = visible

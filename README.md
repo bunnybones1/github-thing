@@ -10,6 +10,13 @@ pnpm install
 cp .env.example .env
 ```
 
+Optional for git-daemon healthchecks:
+
+```
+VITE_GIT_DAEMON_API=http://127.0.0.1:8790
+VITE_GIT_DAEMON_TOKEN=...
+```
+
 ## OAuth setup
 
 1. Create a GitHub OAuth App.
@@ -27,6 +34,8 @@ cp .env.example .env
    - Use `pnpm deploy:vars` in CI to apply vars + secrets (keys ending in `_SECRET`).
 
 ## Usage
+
+test
 
 Run the worker and Vite:
 
